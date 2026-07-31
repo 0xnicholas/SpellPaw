@@ -3,7 +3,7 @@
 **版本**: 1.0
 **日期**: 2026-07-31
 **状态**: 草稿
-**关联文档**: [概念设计](./2026-07-31-spellpaw-concept.md) · [术语表](../../CONTEXT.md) · [ADR 索引](../../docs/adr/)
+**关联文档**: [概念设计](./2026-07-31-spellpaw-concept.md) · [术语表](../../CONTEXT.md) · [ADR 索引](../../docs/adr/) · [Phase 1 实现规范](./spellpaw-phase1-implementation.md)
 
 ---
 

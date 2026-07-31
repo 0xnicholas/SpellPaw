@@ -5,3 +5,8 @@ The Customer Graph uses a two-layer read model: an event-triggered incremental r
 **Why**: The AI engine never reads raw Interaction records directly — that would consume thousands of tokens per query and miss the token budget for any useful inference. Instead, a pre-computation layer distills millions of raw interactions into compact structured summaries (Top-K recent interactions, compressed Sentiment Arc, Content DNA aggregates, Lifecycle Stage). The dual-path design solves a scheduling tension: Inbox needs real-time context (a Contact's latest message must be visible within seconds), while Persona derivations like Content DNA require cross-Contact comparison that only makes sense in batch.
 
 **Considered alternatives**: Pure batch (hourly) was rejected because Inbox conversations would open with stale data. Pure event-driven was rejected because Content DNA computation needs global statistics — processing every individual click in isolation produces no signal.
+
+**Consequences**:
+- The incremental path handles light-weight updates: appending latest Interaction to Top-K, flipping Contact.type (Audience → Correspondent) in the same DB transaction as the Interaction write, and refreshing a single Sentiment snapshot.
+- Content Touch ingestion goes through BullMQ (fire-and-forget from the redirect middleware, 3 retries) so the Graph never misses a click — each successful write tags the Contact as dirty for the next batch pass.
+- The batch pass only scans dirty Contacts (not the full table) — the dirty flag is set by any incremental write, and cleared when the batch pass finishes recomputing Content DNA and compressing the Sentiment Arc.

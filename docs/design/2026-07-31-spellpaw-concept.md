@@ -3,6 +3,7 @@
 **日期**: 2026-07-31
 **状态**: 概念验证 / 待评审
 **来源**: [EveryFeed 调研](./research/everyfeed-ai-report.md) · [Sierra 调研](./sierra-ai-report.md)
+**实现**: [Phase 1 Implementation Spec](./spellpaw-phase1-implementation.md)
 
 ---
 
