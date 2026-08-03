@@ -35,6 +35,9 @@ model Workspace {
   modelProviderKeys ModelProviderKey[]
   apiTokens        ApiToken[]
   contacts         Contact[]
+  shortLinks       ShortLink[]
+  conversations    Conversation[]
+  events           Event[]
 
   @@index([accountId])
 }
@@ -120,6 +123,8 @@ model Post {
 
   workspace Workspace      @relation(fields: [workspaceId], references: [id])
   variants  PostVariant[]
+  shortLinks ShortLink[]
+  touches    ContentTouch[]
 
   @@index([workspaceId, status])
   @@index([workspaceId, scheduledAt])
@@ -135,10 +140,95 @@ model PostVariant {
   publishedAt  DateTime?
   errorMessage String?
 
-  post    Post    @relation(fields: [postId], references: [id])
-  channel Channel @relation(fields: [channelId], references: [id])
+  post      Post        @relation(fields: [postId], references: [id])
+  channel   Channel     @relation(fields: [channelId], references: [id])
+  shortLink ShortLink?
 
   @@unique([postId, channelId])
+}
+
+// --- M4: Interaction tables (spec §1) + short links (ADR-0009) ---
+// Deviation notes (vs spec sketch): ShortLink carries workspaceId + variantId
+// (links are workspace-scoped and attributed per channel variant);
+// ContentTouch.contactId is nullable because cookie-blocked clicks are still
+// counted (anonymous).
+
+enum TouchAction {
+  CLICK
+  LIKE
+  SHARE
+}
+
+model ShortLink {
+  id          String   @id @default(cuid())
+  workspaceId String
+  code        String   @unique
+  targetUrl   String
+  postId      String
+  variantId   String   @unique
+  createdAt   DateTime @default(now())
+
+  workspace Workspace   @relation(fields: [workspaceId], references: [id])
+  post      Post        @relation(fields: [postId], references: [id])
+  variant   PostVariant @relation(fields: [variantId], references: [id])
+
+  @@index([workspaceId, createdAt])
+}
+
+model ContentTouch {
+  id        String      @id @default(cuid())
+  contactId String?
+  postId    String
+  variantId String?
+  action    TouchAction @default(CLICK)
+  timestamp DateTime    @default(now())
+
+  contact Contact? @relation(fields: [contactId], references: [id])
+  post    Post     @relation(fields: [postId], references: [id])
+
+  @@index([contactId, timestamp])
+  @@index([postId, timestamp])
+  @@index([variantId, timestamp])
+}
+
+enum ConvDirection {
+  INBOUND
+  OUTBOUND
+}
+
+model Conversation {
+  id        String        @id @default(cuid())
+  workspaceId String
+  contactId String
+  messageId String
+  direction ConvDirection
+  timestamp DateTime      @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  contact   Contact   @relation(fields: [contactId], references: [id])
+
+  @@index([contactId, timestamp])
+}
+
+enum EventType {
+  REGISTER
+  SUBSCRIBE
+  UPGRADE
+  LOGIN
+}
+
+model Event {
+  id             String    @id @default(cuid())
+  workspaceId    String
+  contactId      String
+  eventType      EventType
+  externalSource String?
+  timestamp      DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  contact   Contact   @relation(fields: [contactId], references: [id])
+
+  @@index([contactId, timestamp])
 }
 
 // --- M3: AI Provider (BYOK, ADR-0005) ---
@@ -218,7 +308,10 @@ model Contact {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  workspace Workspace    @relation(fields: [workspaceId], references: [id])
+  touches   ContentTouch[]
+  conversations Conversation[]
+  events        Event[]
 
   @@index([workspaceId, stateLifecycleStage])
   @@index([workspaceId, updatedAt])

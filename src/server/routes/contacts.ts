@@ -21,8 +21,40 @@ export function contactsRoutes(deps: RouteDeps): Hono<AppEnv> {
 
   // Must be registered before /:id.
   app.get("/insights/repeat-viewers", async (c) => {
-    // Requires ContentTouch aggregation — lands with M4. Honest empty result.
-    return c.json({ viewers: [] });
+    // Contacts that touched ≥2 distinct posts (spec §2). Workspace-scoped via
+    // the Post join; returns the NON_PII projection only.
+    const viewers = await deps.prisma.$queryRaw<
+      Array<{
+        id: string;
+        stateLifecycleStage: string;
+        personaContentDNA: unknown;
+        updatedAt: Date;
+        postCount: number;
+        touchCount: number;
+      }>
+    >`
+      SELECT c."id", c."stateLifecycleStage", c."personaContentDNA", c."updatedAt",
+             count(DISTINCT ct."postId")::int AS "postCount",
+             count(ct."id")::int AS "touchCount"
+      FROM "Contact" c
+      JOIN "ContentTouch" ct ON ct."contactId" = c."id"
+      JOIN "Post" p ON p."id" = ct."postId"
+      WHERE p."workspaceId" = ${c.get("workspaceId")}
+      GROUP BY c."id"
+      HAVING count(DISTINCT ct."postId") >= 2
+      ORDER BY "touchCount" DESC
+      LIMIT 20
+    `;
+    return c.json({
+      viewers: viewers.map((v) => ({
+        id: v.id,
+        stateLifecycleStage: v.stateLifecycleStage,
+        personaContentDNA: v.personaContentDNA,
+        updatedAt: v.updatedAt,
+        postCount: v.postCount,
+        touchCount: v.touchCount,
+      })),
+    });
   });
 
   app.get("/", async (c) => {

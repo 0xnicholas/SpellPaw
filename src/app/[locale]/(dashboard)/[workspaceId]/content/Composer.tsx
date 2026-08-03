@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { useComposerStore, type ComposerChannel } from "@/stores/composer";
 import { createApiClient } from "@/lib/client-api";
 import { getChannelCharLimit } from "@/domain/post";
@@ -30,6 +31,7 @@ export function Composer({ workspaceId, channels }: Props) {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
+  const t = useTranslations("composer");
 
   const aiMutation = useMutation({
     mutationFn: async ({ channelSlug }: { channelSlug: string }) => {
@@ -80,10 +82,10 @@ export function Composer({ workspaceId, channels }: Props) {
       setError(null);
       setNotice(
         action === "draft"
-          ? "Draft saved."
+          ? t("draftSaved")
           : action === "schedule"
-            ? "Scheduled — the queue will publish it on time."
-            : "Queued for publishing — it will appear shortly.",
+            ? t("scheduledNotice")
+            : t("queuedNotice"),
       );
     },
     onError: (err) => {
@@ -103,7 +105,7 @@ export function Composer({ workspaceId, channels }: Props) {
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Post title (optional)"
+          placeholder={t("titlePlaceholder")}
           className="w-full text-lg font-medium text-zinc-900 placeholder-zinc-400 focus:outline-none"
         />
       </div>
@@ -115,7 +117,7 @@ export function Composer({ workspaceId, channels }: Props) {
             value={globalDraft}
             onChange={(e) => setGlobalDraft(e.target.value)}
             rows={3}
-            placeholder="Write your post…"
+            placeholder={t("writePlaceholder")}
             className="w-full resize-none rounded-lg border border-zinc-200 p-3 text-sm focus:border-zinc-400 focus:outline-none"
           />
           {activeChannel && (
@@ -131,8 +133,8 @@ export function Composer({ workspaceId, channels }: Props) {
           {aiError && (
             <p className="mt-1 text-xs text-amber-700">
               {aiError === "MODEL_KEY_MISSING"
-                ? "No model key configured — add one in Settings to use AI."
-                : `AI rewrite failed: ${aiError}`}
+                ? t("aiNoKey")
+                : t("aiFailed", { message: aiError })}
             </p>
           )}
         </div>
@@ -170,7 +172,7 @@ export function Composer({ workspaceId, channels }: Props) {
               value={activeContent}
               onChange={(e) => setVariant(activeChannel.slug, e.target.value)}
               rows={3}
-              placeholder={`${activeChannel.name} variant — starts from your draft, edit freely`}
+              placeholder={t("variantPlaceholder", { name: activeChannel.name })}
               className="w-full resize-none rounded-lg border border-zinc-200 p-3 text-sm focus:border-zinc-400 focus:outline-none"
             />
             <div className="mt-1 flex items-center justify-between text-xs text-zinc-500">
@@ -212,7 +214,7 @@ export function Composer({ workspaceId, channels }: Props) {
             disabled={!canSubmit || mutation.isPending}
             className="rounded-lg bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-40"
           >
-            {mutation.isPending ? "Working…" : "Publish"}
+            {mutation.isPending ? t("working") : t("publish")}
           </button>
           {notice && <span className="text-sm text-green-700">{notice}</span>}
           {error && <span className="text-sm text-red-600">{error}</span>}

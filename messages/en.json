@@ -1,0 +1,111 @@
+{
+  "nav": {
+    "brand": "SpellPaw",
+    "content": "Content",
+    "channels": "Channels",
+    "analytics": "Analytics",
+    "settings": "Settings",
+    "signOut": "Sign out"
+  },
+  "login": {
+    "title": "Sign in to SpellPaw",
+    "subtitle": "Magic-link sign in — no password needed.",
+    "email": "Email",
+    "emailPlaceholder": "you@example.com",
+    "submit": "Send sign-in link",
+    "sentTitle": "Check your inbox",
+    "sentBody": "Check {email} for your sign-in link.",
+    "devMode": "Dev mode is on — the magic link is printed to the server console (pnpm dev).",
+    "error": "Something went wrong — try again."
+  },
+  "content": {
+    "title": "Content",
+    "subtitle": "Create once, publish everywhere. Your customer graph starts with every click."
+  },
+  "composer": {
+    "draft": "Draft",
+    "writePlaceholder": "Write your post…",
+    "aiRewrite": "✨ AI rewrite",
+    "aiRewriting": "✨ Rewriting…",
+    "aiNoKey": "No model key configured — add one in Settings to use AI.",
+    "aiFailed": "AI rewrite failed: {message}",
+    "queued": "Queued",
+    "queueHint": "This post is queued and will publish shortly.",
+    "schedule": "Schedule",
+    "publish": "Publish",
+    "saveDraft": "Save draft",
+    "titlePlaceholder": "Post title (optional)",
+    "schedulePlaceholder": "YYYY-MM-DDTHH:MM (local time)",
+    "published": "Published",
+    "scheduled": "Scheduled",
+    "channelDisconnected": "{name} is not connected",
+    "variantDraft": "Draft",
+    "draftSaved": "Draft saved.",
+    "scheduledNotice": "Scheduled — the queue will publish it on time.",
+    "queuedNotice": "Queued for publishing — it will appear shortly.",
+    "working": "Working…",
+    "variantPlaceholder": "{name} variant — starts from your draft, edit freely"
+  },
+  "postlist": {
+    "title": "Recent posts",
+    "empty": "No posts yet — write something in the composer above.",
+    "copyLink": "Copy short link",
+    "link": "link",
+    "createLink": "Create a tracked short link to paste into this post",
+    "copied": "✓ copied",
+    "destinationPlaceholder": "Destination URL, e.g. https://yourproduct.dev/launch",
+    "creating": "Creating…",
+    "createAndCopy": "Create & copy",
+    "failed": "failed",
+    "chars": "chars",
+    "untitled": "Untitled"
+  },
+  "calendar": {
+    "title": "Calendar",
+    "publish": "Publish",
+    "cancel": "Cancel"
+  },
+  "channels": {
+    "title": "Channels",
+    "subtitle": "Connect your publishing accounts. Credentials are encrypted at rest."
+  },
+  "settings": {
+    "title": "Settings",
+    "modelKeysTitle": "Model keys",
+    "modelKeysBody": "Your own OpenAI/Anthropic keys power AI features. Keys are encrypted at rest; only a preview is shown.",
+    "provider": "Provider",
+    "add": "Add",
+    "saving": "Saving…",
+    "remove": "Remove",
+    "inactive": "inactive",
+    "noKeys": "No keys yet — add one to enable AI rewrite.",
+    "apiTokensTitle": "API tokens",
+    "apiTokensBody": "Use a token to connect MCP clients (Claude Desktop, Cursor, custom agents) to this workspace's API.",
+    "tokenPlaceholder": "e.g. claude desktop",
+    "create": "Create",
+    "minting": "Minting…",
+    "tokenCreated": "Token created — copy it now, it won't be shown again.",
+    "neverUsed": "never used",
+    "lastUsed": "last used {at}",
+    "revoke": "Revoke",
+    "noTokens": "No tokens yet."
+  },
+  "analytics": {
+    "title": "Analytics",
+    "loading": "Loading…",
+    "totalTouches": "Total touches",
+    "uniqueContacts": "Unique contacts",
+    "repeatViewers": "Repeat viewers",
+    "touches14d": "Touches (last 14 days)",
+    "noClicks": "No clicks yet — publish a post with a tracked short link, then click it.",
+    "audienceStage": "Audience by lifecycle stage",
+    "noContacts": "Contacts appear here after the first tracked click.",
+    "topPosts": "Top posts",
+    "noTopPosts": "No clicks recorded yet.",
+    "clicks": "{count} clicks",
+    "untitled": "Untitled"
+  },
+  "home": {
+    "redirecting": "Redirecting…"
+  }
+}

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { createApiClient } from "@/lib/client-api";
 
 interface Props {
@@ -27,6 +28,7 @@ interface ApiTokenView {
 export function SettingsClient({ workspaceId }: Props) {
   const api = createApiClient(workspaceId);
   const queryClient = useQueryClient();
+  const t = useTranslations("settings");
   const [provider, setProvider] = useState<"openai" | "anthropic">("openai");
   const [apiKey, setApiKey] = useState("");
   const [tokenName, setTokenName] = useState("");
@@ -94,11 +96,8 @@ export function SettingsClient({ workspaceId }: Props) {
 
       {/* Model keys (BYOK — ADR-0005) */}
       <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-        <h2 className="text-sm font-semibold text-zinc-900">Model keys</h2>
-        <p className="mt-1 text-xs text-zinc-500">
-          Your own OpenAI/Anthropic keys power AI features. Keys are encrypted at rest; only a
-          preview is shown.
-        </p>
+        <h2 className="text-sm font-semibold text-zinc-900">{t("modelKeysTitle")}</h2>
+        <p className="mt-1 text-xs text-zinc-500">{t("modelKeysBody")}</p>
 
         <div className="mt-4 flex gap-2">
           <select
@@ -120,7 +119,7 @@ export function SettingsClient({ workspaceId }: Props) {
             disabled={addKey.isPending || apiKey.trim().length < 10}
             className="rounded-lg bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-40"
           >
-            {addKey.isPending ? "Saving…" : "Add"}
+            {addKey.isPending ? t("saving") : t("add")}
           </button>
         </div>
 
@@ -130,7 +129,7 @@ export function SettingsClient({ workspaceId }: Props) {
               <div>
                 <span className="font-medium text-zinc-900 capitalize">{k.provider}</span>
                 <span className="ml-2 font-mono text-xs text-zinc-500">{k.keyPreview}</span>
-                {!k.isActive && <span className="ml-2 text-xs text-amber-600">inactive</span>}
+                {!k.isActive && <span className="ml-2 text-xs text-amber-600">{t("inactive")}</span>}
               </div>
               <button
                 onClick={() => deleteKey.mutate(k.id)}
@@ -141,24 +140,21 @@ export function SettingsClient({ workspaceId }: Props) {
             </li>
           ))}
           {(keysQuery.data?.keys ?? []).length === 0 && (
-            <li className="text-sm text-zinc-400">No keys yet — add one to enable AI rewrite.</li>
+            <li className="text-sm text-zinc-400">{t("noKeys")}</li>
           )}
         </ul>
       </section>
 
       {/* API tokens (bearer auth for MCP clients) */}
       <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-        <h2 className="text-sm font-semibold text-zinc-900">API tokens</h2>
-        <p className="mt-1 text-xs text-zinc-500">
-          Use a token to connect MCP clients (Claude Desktop, Cursor, custom agents) to this
-          workspace&apos;s API.
-        </p>
+        <h2 className="text-sm font-semibold text-zinc-900">{t("apiTokensTitle")}</h2>
+        <p className="mt-1 text-xs text-zinc-500">{t("apiTokensBody")}</p>
 
         <div className="mt-4 flex gap-2">
           <input
             value={tokenName}
             onChange={(e) => setTokenName(e.target.value)}
-            placeholder="e.g. claude desktop"
+            placeholder={t("tokenPlaceholder")}
             className="flex-1 rounded-lg border border-zinc-300 px-3 py-1.5 text-sm"
           />
           <button
@@ -166,39 +162,38 @@ export function SettingsClient({ workspaceId }: Props) {
             disabled={mintToken.isPending || tokenName.trim().length === 0}
             className="rounded-lg bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-40"
           >
-            {mintToken.isPending ? "Minting…" : "Create"}
+            {mintToken.isPending ? t("minting") : t("create")}
           </button>
         </div>
 
         {mintedToken && (
           <div className="mt-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm">
-            <p className="text-green-800">
-              Token created — <span className="font-semibold">copy it now</span>, it won&apos;t be
-              shown again.
-            </p>
+            <p className="text-green-800">{t("tokenCreated")}</p>
             <code className="mt-1 block break-all font-mono text-xs text-zinc-700">{mintedToken}</code>
           </div>
         )}
 
         <ul className="mt-4 space-y-2">
-          {(tokensQuery.data?.tokens ?? []).map((t) => (
-            <li key={t.id} className="flex items-center justify-between rounded-lg bg-zinc-50 px-3 py-2 text-sm">
+          {(tokensQuery.data?.tokens ?? []).map((tok) => (
+            <li key={tok.id} className="flex items-center justify-between rounded-lg bg-zinc-50 px-3 py-2 text-sm">
               <div>
-                <span className="font-medium text-zinc-900">{t.name}</span>
+                <span className="font-medium text-zinc-900">{tok.name}</span>
                 <span className="ml-2 text-xs text-zinc-500">
-                  {t.lastUsedAt ? `last used ${new Date(t.lastUsedAt).toLocaleString()}` : "never used"}
+                  {tok.lastUsedAt
+                    ? t("lastUsed", { at: new Date(tok.lastUsedAt).toLocaleString() })
+                    : t("neverUsed")}
                 </span>
               </div>
               <button
-                onClick={() => revokeToken.mutate(t.id)}
+                onClick={() => revokeToken.mutate(tok.id)}
                 className="text-xs text-zinc-400 hover:text-red-600"
               >
-                Revoke
+                {t("revoke")}
               </button>
             </li>
           ))}
           {(tokensQuery.data?.tokens ?? []).length === 0 && (
-            <li className="text-sm text-zinc-400">No tokens yet.</li>
+            <li className="text-sm text-zinc-400">{t("noTokens")}</li>
           )}
         </ul>
       </section>

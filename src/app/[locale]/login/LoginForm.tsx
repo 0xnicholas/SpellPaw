@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { signIn } from "next-auth/react";
+import { useTranslations } from "next-intl";
 
 export function LoginForm({ devMode }: { devMode: boolean }) {
+  const t = useTranslations("login");
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
 
@@ -17,13 +19,13 @@ export function LoginForm({ devMode }: { devMode: boolean }) {
   if (status === "sent") {
     return (
       <div className="space-y-3">
+        <p className="text-sm text-zinc-700">{t("sentTitle")}</p>
         <p className="text-sm text-zinc-700">
-          Check <span className="font-medium">{email}</span> for your sign-in link.
+          {t("sentBody", { email })}
         </p>
         {devMode && (
           <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            Dev mode is on — the magic link is printed to the server console
-            (<code>pnpm dev</code>).
+            {t("devMode")}
           </p>
         )}
       </div>
@@ -32,9 +34,12 @@ export function LoginForm({ devMode }: { devMode: boolean }) {
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
+      {status === "error" && (
+        <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">{t("error")}</p>
+      )}
       <div>
         <label htmlFor="email" className="mb-1 block text-sm font-medium text-zinc-700">
-          Email
+          {t("email")}
         </label>
         <input
           id="email"
@@ -51,11 +56,8 @@ export function LoginForm({ devMode }: { devMode: boolean }) {
         disabled={status === "sending"}
         className="w-full rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
       >
-        {status === "sending" ? "Sending…" : "Email me a magic link"}
+        {status === "sending" ? "…" : t("submit")}
       </button>
-      {status === "error" && (
-        <p className="text-sm text-red-600">Something went wrong — try again.</p>
-      )}
     </form>
   );
 }

@@ -27,6 +27,7 @@ import {
   settlePost,
 } from "./posts";
 import type { Post, PostVariant } from "@/generated/prisma/client";
+import { applyClick, type ClickEvent } from "./interactions";
 
 export interface QueueJobOptions {
   attempts?: number;
@@ -56,6 +57,12 @@ export interface ScheduleJobData {
 const SCHEDULER_QUEUE = "schedule";
 const RECONCILER_JOB = "run-reconciler";
 const RECONCILER_EVERY_MS = 5 * 60 * 1000;
+// Short-link click attribution (ADR-0009): fire-and-forget from the redirect,
+// 3 attempts (1 initial + 2 retries, exponential backoff from 5s) so no click
+// is silently lost. ADR says "3 retries" — attempts semantics chosen for
+// consistency with the publish queue (attempts = total tries).
+const CLICK_QUEUE = "click-touch";
+const CLICK_ATTEMPTS = 3;
 
 function redis(url: string): IORedis {
   return new IORedis(url, { maxRetriesPerRequest: null });
@@ -271,6 +278,19 @@ export interface RunningWorkers {
   close: () => Promise<void>;
 }
 
+/** Producer handle for the click-attribution queue (fire-and-forget). */
+export function clickQueue(redisUrl: string): Queue<ClickEvent> {
+  return new Queue(CLICK_QUEUE, {
+    connection: redis(redisUrl),
+    defaultJobOptions: {
+      attempts: CLICK_ATTEMPTS,
+      backoff: { type: "exponential", delay: 5_000 },
+      removeOnComplete: 500,
+      removeOnFail: 500,
+    },
+  });
+}
+
 export function createWorkers(deps: WorkerDeps): RunningWorkers {
   const connection = redis(deps.redisUrl);
   const publisher = createPublisher(deps);
@@ -302,6 +322,14 @@ export function createWorkers(deps: WorkerDeps): RunningWorkers {
     { connection, concurrency: 2 },
   );
 
+  // Click attribution (ADR-0009): redirects enqueue fire-and-forget; the
+  // worker owns contact resolution + touch insert + state recompute.
+  const clickWorker = new Worker<ClickEvent>(
+    CLICK_QUEUE,
+    (job) => applyClick(deps.prisma, job.data),
+    { connection, concurrency: 10 },
+  );
+
   const reconcilerWorker = new Worker(RECONCILER_JOB, () =>
     reconcilerJobProcessor(deps, publisher),
   { connection, concurrency: 1 });
@@ -328,6 +356,7 @@ export function createWorkers(deps: WorkerDeps): RunningWorkers {
       await Promise.all([
         ...publishWorkers.map((w) => w.close()),
         schedulerWorker.close(),
+        clickWorker.close(),
         reconcilerWorker.close(),
       ]);
       await publisher.close();

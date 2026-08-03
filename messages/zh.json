@@ -1,0 +1,111 @@
+{
+  "nav": {
+    "brand": "SpellPaw",
+    "content": "内容",
+    "channels": "渠道",
+    "analytics": "分析",
+    "settings": "设置",
+    "signOut": "退出登录"
+  },
+  "login": {
+    "title": "登录 SpellPaw",
+    "subtitle": "魔法链接登录——无需密码。",
+    "email": "邮箱",
+    "emailPlaceholder": "you@example.com",
+    "submit": "发送登录链接",
+    "sentTitle": "查收你的邮箱",
+    "sentBody": "登录链接已发送到 {email}。",
+    "devMode": "开发模式已开启——魔法链接会打印在服务器控制台（pnpm dev）。",
+    "error": "出错了，请重试。"
+  },
+  "content": {
+    "title": "内容",
+    "subtitle": "一次创作，全渠道发布。你的客户图谱从每一次点击开始。"
+  },
+  "composer": {
+    "draft": "草稿",
+    "writePlaceholder": "写点什么…",
+    "aiRewrite": "✨ AI 改写",
+    "aiRewriting": "✨ 改写中…",
+    "aiNoKey": "尚未配置模型密钥——请在设置中添加以使用 AI。",
+    "aiFailed": "AI 改写失败：{message}",
+    "queued": "已排队",
+    "queueHint": "该内容已进入队列，即将发布。",
+    "schedule": "排程",
+    "publish": "发布",
+    "saveDraft": "保存草稿",
+    "titlePlaceholder": "内容标题（可选）",
+    "schedulePlaceholder": "YYYY-MM-DDTHH:MM（本地时间）",
+    "published": "已发布",
+    "scheduled": "已排程",
+    "channelDisconnected": "{name} 未连接",
+    "variantDraft": "草稿",
+    "draftSaved": "草稿已保存。",
+    "scheduledNotice": "已排程——队列将准时发布。",
+    "queuedNotice": "已进入发布队列——即将发布。",
+    "working": "处理中…",
+    "variantPlaceholder": "{name} 变体——从你的草稿开始，可自由编辑"
+  },
+  "postlist": {
+    "title": "最近内容",
+    "empty": "还没有内容——在上方编辑器里写一篇吧。",
+    "copyLink": "复制短链接",
+    "link": "短链",
+    "createLink": "生成可追踪短链，粘贴进这条内容",
+    "copied": "✓ 已复制",
+    "destinationPlaceholder": "目标链接，例如 https://yourproduct.dev/launch",
+    "creating": "生成中…",
+    "createAndCopy": "生成并复制",
+    "failed": "失败",
+    "chars": "字",
+    "untitled": "无标题"
+  },
+  "calendar": {
+    "title": "日历",
+    "publish": "发布",
+    "cancel": "取消"
+  },
+  "channels": {
+    "title": "渠道",
+    "subtitle": "连接你的发布账号。凭据在存储层加密。"
+  },
+  "settings": {
+    "title": "设置",
+    "modelKeysTitle": "模型密钥",
+    "modelKeysBody": "AI 功能使用你自己的 OpenAI/Anthropic 密钥。密钥加密存储，仅显示预览。",
+    "provider": "提供商",
+    "add": "添加",
+    "saving": "保存中…",
+    "remove": "移除",
+    "inactive": "已停用",
+    "noKeys": "暂无密钥——添加后即可使用 AI 改写。",
+    "apiTokensTitle": "API 令牌",
+    "apiTokensBody": "使用令牌连接 MCP 客户端（Claude Desktop、Cursor、自定义 Agent）到本工作区的 API。",
+    "tokenPlaceholder": "例如 claude desktop",
+    "create": "创建",
+    "minting": "创建中…",
+    "tokenCreated": "令牌已创建——请立即复制，之后不再展示。",
+    "neverUsed": "从未使用",
+    "lastUsed": "最近使用 {at}",
+    "revoke": "吊销",
+    "noTokens": "暂无令牌。"
+  },
+  "analytics": {
+    "title": "分析",
+    "loading": "加载中…",
+    "totalTouches": "触达总数",
+    "uniqueContacts": "独立联系人",
+    "repeatViewers": "回头访客",
+    "touches14d": "触达（近 14 天）",
+    "noClicks": "还没有点击——发布一条带短链的内容，然后点击它。",
+    "audienceStage": "按生命周期阶段的受众分布",
+    "noContacts": "第一次追踪点击后，联系人会出现在这里。",
+    "topPosts": "热门内容",
+    "noTopPosts": "暂无点击记录。",
+    "clicks": "{count} 次点击",
+    "untitled": "无标题"
+  },
+  "home": {
+    "redirecting": "跳转中…"
+  }
+}

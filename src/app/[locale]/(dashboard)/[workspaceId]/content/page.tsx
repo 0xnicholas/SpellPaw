@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { getTranslations } from "next-intl/server";
 import { Composer } from "./Composer";
 import { CalendarPanel } from "./CalendarPanel";
 import { PostList } from "./PostList";
@@ -9,6 +10,7 @@ export default async function ContentPage({
   params: Promise<{ workspaceId: string }>;
 }) {
   const { workspaceId } = await params;
+  const t = await getTranslations("content");
 
   const [posts, channels] = await Promise.all([
     prisma.post.findMany({
@@ -33,10 +35,8 @@ export default async function ContentPage({
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold text-zinc-900">Content</h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          Create once, publish everywhere. Your customer graph starts with every click.
-        </p>
+        <h1 className="text-2xl font-semibold text-zinc-900">{t("title")}</h1>
+        <p className="mt-1 text-sm text-zinc-500">{t("subtitle")}</p>
       </div>
 
       <Composer
