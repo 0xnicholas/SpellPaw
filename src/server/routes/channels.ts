@@ -29,15 +29,18 @@ export function channelsRoutes(deps: RouteDeps): Hono<AppEnv> {
     const origin = new URL(c.req.url).origin;
     const redirectUri = `${origin}/api/channels/${slug}/callback`;
     const pending = startConnect(adapter, redirectUri, c.get("workspaceId"));
+    const secure = process.env.NODE_ENV === "production";
     setCookie(c, oauthStateCookie(slug), pending.state, {
       httpOnly: true,
       sameSite: "Lax",
+      secure,
       path: `/api/channels/${slug}`,
       maxAge: 600,
     });
     setCookie(c, oauthVerifierCookie(slug), pending.verifier, {
       httpOnly: true,
       sameSite: "Lax",
+      secure,
       path: `/api/channels/${slug}`,
       maxAge: 600,
     });

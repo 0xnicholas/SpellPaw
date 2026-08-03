@@ -86,7 +86,14 @@ beforeAll(async () => {
   prisma = createPrismaClient(TEST_DATABASE_URL!);
   await prisma.workspace.upsert({
     where: { id: WS },
-    create: { id: WS, accountId: ACCOUNT, name: "MCP test" },
+    create: {
+      id: WS,
+      accountId: ACCOUNT,
+      name: "MCP test",
+      // M5: publish approval defaults true — the schedule test opts out to
+      // exercise the publisher path; a dedicated test covers the gate.
+      mcpPublishApproval: false,
+    },
     update: {},
   });
   for (const slug of ["twitter", "linkedin", "instagram"]) {
@@ -162,8 +169,38 @@ describe("MCP tools", () => {
     expect(post.status).toBe("DRAFT");
   });
 
-  it("schedules and cancels via schedule tools (through the publisher)", async () => {
+  it("schedule tools are gated by the publish-approval trust toggle (spec §3)", async () => {
     const { token } = await mintApiToken(prisma, WS, "test");
+    const client = new McpClient(makeApp(), token);
+    await client.initialize();
+    const created = await client.call<{ structuredContent: { postId: string } }>(2, "tools/call", {
+      name: "post.create_draft",
+      arguments: { variants: [{ channelSlug: "twitter", content: "gated" }] },
+    });
+    const postId = created.result!.structuredContent.postId;
+
+    // Toggle ON (default) — publish-path tools reject with an approval error.
+    await prisma.workspace.update({ where: { id: WS }, data: { mcpPublishApproval: true } });
+    const future = new Date(Date.now() + 3600_000).toISOString();
+    const gated = await client.call<{ content?: Array<{ text?: string }>; isError?: boolean }>(3, "tools/call", {
+      name: "schedule.set",
+      arguments: { postId, scheduledAt: future },
+    });
+    expect(gated.result?.isError).toBe(true);
+    expect(gated.result?.content?.[0]?.text ?? "").toContain("requires approval");
+    expect((await prisma.post.findUniqueOrThrow({ where: { id: postId } })).status).toBe("DRAFT");
+
+    // Toggle OFF (trusted mode) — the same call succeeds.
+    await prisma.workspace.update({ where: { id: WS }, data: { mcpPublishApproval: false } });
+    const ok = await client.call<{ structuredContent: { status: string } }>(4, "tools/call", {
+      name: "schedule.set",
+      arguments: { postId, scheduledAt: future },
+    });
+    expect(ok.error).toBeUndefined();
+    expect(ok.result?.structuredContent.status).toBe("SCHEDULED");
+  });
+
+  it("schedules and cancels via schedule tools (through the publisher)", async () => {    const { token } = await mintApiToken(prisma, WS, "test");
     const client = new McpClient(makeApp(), token);
     await client.initialize();
     const created = await client.call<{ structuredContent: { postId: string } }>(2, "tools/call", {

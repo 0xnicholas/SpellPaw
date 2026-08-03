@@ -44,6 +44,27 @@ export interface ApiDeps {
 
 export function createApiApp(deps: ApiDeps): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
+
+  // Baseline security headers for every API response (M5 hardening).
+  app.use("*", async (c, next) => {
+    await next();
+    c.header("X-Content-Type-Options", "nosniff");
+    c.header("X-Frame-Options", "DENY");
+    c.header("Referrer-Policy", "strict-origin-when-cross-origin");
+    c.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  });
+
+  // Health probe for deployment orchestrators — anonymous by design.
+  app.get("/api/health", async (c) => {
+    try {
+      await deps.prisma.$queryRaw`SELECT 1`;
+    } catch (err) {
+      console.error("[health] db ping failed", err);
+      return c.json({ ok: false, db: "unreachable" }, 503);
+    }
+    return c.json({ ok: true, service: "spellpaw-api" });
+  });
+
   const routeDeps: RouteDeps = {
     prisma: deps.prisma,
     publisher: deps.publisher,

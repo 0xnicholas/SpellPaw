@@ -55,6 +55,8 @@ function syncPublisher(adapters: Record<string, ChannelAdapter>): Publisher {
 function makeApp(options?: {
   getAccountId?: (c: Context) => Promise<string | null>;
   adapters?: Record<string, ChannelAdapter>;
+  /** No authenticated identity — for anonymous endpoints (health). */
+  anonymous?: boolean;
 }) {
   const adapters = options?.adapters ?? {
     twitter: new MockAdapter("twitter"),
@@ -65,8 +67,8 @@ function makeApp(options?: {
     prisma,
     encryptionKey: KEY,
     adapters,
+    getAccountId: options?.getAccountId ?? (options?.anonymous ? async () => null : async () => ACCOUNT),
     publisher: syncPublisher(adapters),
-    getAccountId: options?.getAccountId ?? (async () => ACCOUNT),
   });
   return app;
 }
@@ -123,6 +125,23 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await prisma.$disconnect();
+});
+
+describe("health", () => {
+  it("responds ok when the DB is reachable, anonymously (no auth identity)", async () => {
+    const app = makeApp({ anonymous: true });
+    const res = await app.request("/api/health");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean };
+    expect(body.ok).toBe(true);
+  });
+
+  it("sets baseline security headers on API responses", async () => {
+    const app = makeApp();
+    const res = await app.request("/api/health");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("x-frame-options")).toBe("DENY");
+  });
 });
 
 describe("auth guard", () => {

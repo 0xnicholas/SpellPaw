@@ -10,7 +10,9 @@
     "db:seed": "tsx prisma/seed.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install chromium"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.3",
@@ -24,7 +26,7 @@
     "next": "16.2.12",
     "next-auth": "5.0.0-beta.32",
     "next-intl": "^4.13.4",
-    "nodemailer": "^8.0.5",
+    "nodemailer": "^9.0.3",
     "pg": "^8.22.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -32,6 +34,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/nodemailer": "^8.0.1",
@@ -46,5 +49,11 @@
     "tsx": "^4.23.5",
     "typescript": "^5",
     "vitest": "^4.1.10"
+  },
+  "pnpm": {
+    "overrides": {
+      "sharp": "^0.35.0",
+      "postcss": "^8.5.18"
+    }
   }
 }

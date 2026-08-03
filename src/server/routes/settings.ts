@@ -12,6 +12,7 @@ import {
   revokeApiToken,
 } from "../api-tokens";
 import { readJson, type AppEnv, type RouteDeps } from "./shared";
+import { planUsage } from "../limits";
 
 const modelKeySchema = z.object({
   provider: z.string().min(1),
@@ -22,8 +23,51 @@ const apiTokenSchema = z.object({
   name: z.string().min(1).max(60),
 });
 
+// spec §2 — workspace settings surface (M5). name is the display name;
+// mcpPublishApproval is the MCP publish trust toggle (spec §3).
+const workspacePatchSchema = z.object({
+  name: z.string().min(1).max(80).optional(),
+  mcpPublishApproval: z.boolean().optional(),
+});
+
 export function settingsRoutes(deps: RouteDeps): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
+
+  // --- Workspace settings (spec §2; M5) ---
+
+  app.get("/workspace", async (c) => {
+    const workspaceId = c.get("workspaceId");
+    const workspace = await deps.prisma.workspace.findUniqueOrThrow({
+      where: { id: workspaceId },
+      select: { id: true, name: true, mcpPublishApproval: true },
+    });
+    const usage = await planUsage(deps.prisma, workspaceId);
+    return c.json({
+      workspace,
+      limits: {
+        maxChannels: usage.maxChannels,
+        maxPosts: usage.maxPosts,
+        maxContacts: usage.maxContacts,
+        usedChannels: usage.usedChannels,
+        usedPosts: usage.usedPosts,
+        usedContacts: usage.usedContacts,
+      },
+    });
+  });
+
+  app.patch("/workspace", async (c) => {
+    const workspaceId = c.get("workspaceId");
+    const body = await readJson(c, workspacePatchSchema);
+    const data: Record<string, string | boolean> = {};
+    if (body.name !== undefined) data.name = body.name;
+    if (body.mcpPublishApproval !== undefined) data.mcpPublishApproval = body.mcpPublishApproval;
+    const workspace = await deps.prisma.workspace.update({
+      where: { id: workspaceId },
+      data,
+      select: { id: true, name: true, mcpPublishApproval: true },
+    });
+    return c.json({ workspace });
+  });
 
   // --- Model keys (BYOK, ADR-0005) ---
   app.get("/model-keys", async (c) => {

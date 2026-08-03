@@ -47,9 +47,29 @@ export function createMcpServer(deps: McpDeps): McpServer {
   async function checkWriteCap(workspaceId: string): Promise<void> {
     if (!deps.rateLimiter) return;
     const cap = deps.writeDailyCap ?? 100;
+    if (cap === 0) return; // unlimited (MCP_WRITE_DAILY_CAP=0)
     const allowed = await deps.rateLimiter.allow(`sp:mcp-write:${workspaceId}`, cap, 86_400);
     if (!allowed) {
       throw new Error(`daily MCP write cap (${cap}) reached for this workspace`);
+    }
+  }
+
+  /**
+   * Publish-path gate (spec §3): while the workspace trust toggle is off
+   * (mcpPublishApproval = true, the default), schedule/cancel tools reject
+   * with a clear error — the web UI stays the approved path. Turning the
+   * toggle on in Settings opts the workspace into agent-triggered publishing.
+   * Runs BEFORE the write cap so gated calls never burn daily quota.
+   */
+  async function checkPublishApproval(workspaceId: string): Promise<void> {
+    const workspace = await deps.prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { mcpPublishApproval: true },
+    });
+    if (workspace?.mcpPublishApproval) {
+      throw new Error(
+        "publishing via MCP requires approval — enable the trust toggle in Settings, or use the web app",
+      );
     }
   }
 
@@ -61,6 +81,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
     scheduledAtIso: string,
   ) {
     const workspaceId = ws(extra);
+    await checkPublishApproval(workspaceId);
     await checkWriteCap(workspaceId);
     const scheduledAt = new Date(scheduledAtIso);
     if (Number.isNaN(scheduledAt.getTime())) throw new Error("scheduledAt must be a valid ISO timestamp");
@@ -192,6 +213,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
     },
     async (args, extra) => {
       const workspaceId = ws(extra);
+      await checkPublishApproval(workspaceId);
       await checkWriteCap(workspaceId);
       const post = await cancelSchedule(deps.prisma, deps.publisher, workspaceId, args.postId);
       return ok({ postId: post.id, status: post.status, scheduledAt: post.scheduledAt?.toISOString() ?? null });

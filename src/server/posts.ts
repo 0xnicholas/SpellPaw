@@ -11,6 +11,7 @@ import {
 } from "@/domain/post";
 import { ApiError } from "./errors";
 import { decryptString } from "@/lib/crypto";
+import { enforcePostLimit } from "./limits";
 import type { Publisher } from "./publisher";
 
 export interface VariantInput {
@@ -29,6 +30,7 @@ export async function createPost(
   if (input.variants.length === 0) {
     throw new ApiError(400, "post needs at least one variant");
   }
+  await enforcePostLimit(prisma, input.workspaceId);
 
   const slugs = [...new Set(input.variants.map((v) => v.channelSlug))];
   const channels = await prisma.channel.findMany({ where: { slug: { in: slugs } } });

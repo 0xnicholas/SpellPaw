@@ -112,5 +112,13 @@ State 数据实时更新——基于最新的 Interaction 事件触发重算。
 ### Processes
 
 **Connect**:
-用户将外部 Channel 连入 SpellPaw 的流程。通过 OAuth 授权，SpellPaw 获得调用平台 API 的权限。
+用户将外部 Channel 连入 SpellPaw 的流程。通过 OAuth 授权，SpellPaw 获得调用平台 API 的权限。每个 Workspace 的连接数受免费计划护栏限制（默认 3，`FREE_PLAN_MAX_CHANNELS`）。
+
+**Publish Approval（发布审批）**:
+MCP 排程类工具的信任开关（Workspace.mcpPublishApproval，默认开启）。开启时 `schedule.*` 工具拒绝执行并要求走网页端；关闭即信任模式，代理可直接排程。护栏语义，非权限模型（单一用户产品）。
+*Avoid*: approval flow, permission, RBAC
+
+**Free-Plan Guardrails（免费计划护栏）**:
+防滥用上限而非付费墙——3 Channels / 50 Posts / 1000 Contacts，环境变量可调（0 = 不限）。交互式创建路径超限返回 429；短链重定向永不因限额失败，超限自动降级为匿名 Touch。
+*Avoid*: quota, paywall, billing
 

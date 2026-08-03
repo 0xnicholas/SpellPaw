@@ -43,6 +43,32 @@ export function SettingsClient({ workspaceId }: Props) {
     queryKey: ["api-tokens"],
     queryFn: () => api.get<{ tokens: ApiTokenView[] }>("/api/settings/api-tokens"),
   });
+  const workspaceQuery = useQuery({
+    queryKey: ["workspace"],
+    queryFn: () =>
+      api.get<{
+        workspace: { id: string; name: string; mcpPublishApproval: boolean };
+        limits: {
+          maxChannels: number;
+          maxPosts: number;
+          maxContacts: number;
+          usedChannels: number;
+          usedPosts: number;
+          usedContacts: number;
+        };
+      }>("/api/settings/workspace"),
+  });
+
+  const patchWorkspace = useMutation({
+    mutationFn: (patch: { name?: string; mcpPublishApproval?: boolean }) =>
+      api.send<{ workspace: { name: string; mcpPublishApproval: boolean } }>(
+        "/api/settings/workspace",
+        "PATCH",
+        patch,
+      ),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["workspace"] }),
+    onError: (err) => setError(err instanceof Error ? err.message : String(err)),
+  });
 
   const addKey = useMutation({
     mutationFn: async () => {
@@ -88,6 +114,67 @@ export function SettingsClient({ workspaceId }: Props) {
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
+      {/* Workspace settings (M5): name + MCP trust toggle + plan usage */}
+      <section className="rounded-xl border border-zinc-200 bg-white p-5">
+        <h2 className="text-sm font-semibold text-zinc-900">{t("workspaceTitle")}</h2>
+        <p className="mt-1 text-xs text-zinc-500">{t("workspaceBody")}</p>
+
+        <div className="mt-4 flex items-center gap-2">
+          <input
+            defaultValue={workspaceQuery.data?.workspace.name ?? ""}
+            key={workspaceQuery.data?.workspace.name ?? "loading"}
+            className="min-w-0 flex-1 rounded-lg border border-zinc-200 px-3 py-1.5 text-sm"
+            placeholder={t("workspaceNamePlaceholder")}
+          />
+          <button
+            onClick={(e) => {
+              const input = e.currentTarget.parentElement?.querySelector("input") as HTMLInputElement;
+              if (input?.value.trim()) patchWorkspace.mutate({ name: input.value.trim() });
+            }}
+            className="rounded-lg bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-zinc-700"
+          >
+            {t("save")}
+          </button>
+        </div>
+
+        <label className="mt-5 flex items-start gap-3">
+          <input
+            type="checkbox"
+            checked={workspaceQuery.data?.workspace.mcpPublishApproval ?? true}
+            onChange={(e) => patchWorkspace.mutate({ mcpPublishApproval: e.target.checked })}
+            className="mt-0.5 h-4 w-4"
+          />
+          <span className="text-sm">
+            <span className="font-medium text-zinc-900">{t("publishApproval")}</span>
+            <span className="mt-0.5 block text-xs text-zinc-500">{t("publishApprovalBody")}</span>
+          </span>
+        </label>
+
+        <div className="mt-5 space-y-1.5 border-t border-zinc-100 pt-4 text-xs text-zinc-500">
+          <div className="flex justify-between">
+            <span>{t("limitChannels")}</span>
+            <span>
+              {workspaceQuery.data?.limits.usedChannels ?? "?"} /{" "}
+              {workspaceQuery.data?.limits.maxChannels ?? "?"}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span>{t("limitPosts")}</span>
+            <span>
+              {workspaceQuery.data?.limits.usedPosts ?? "?"} /{" "}
+              {workspaceQuery.data?.limits.maxPosts ?? "?"}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span>{t("limitContacts")}</span>
+            <span>
+              {workspaceQuery.data?.limits.usedContacts ?? "?"} /{" "}
+              {workspaceQuery.data?.limits.maxContacts ?? "?"}
+            </span>
+          </div>
+          <p className="pt-1 text-[11px] text-zinc-400">{t("limitsBody")}</p>
+        </div>
+      </section>
       {error && (
         <div className="lg:col-span-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}

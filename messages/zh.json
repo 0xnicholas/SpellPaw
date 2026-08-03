@@ -88,7 +88,17 @@
     "neverUsed": "从未使用",
     "lastUsed": "最近使用 {at}",
     "revoke": "吊销",
-    "noTokens": "暂无令牌。"
+    "noTokens": "暂无令牌。",
+    "workspaceTitle": "工作区",
+    "workspaceBody": "显示名称、MCP 发布信任开关与免费计划用量。",
+    "workspaceNamePlaceholder": "工作区名称",
+    "save": "保存",
+    "publishApproval": "MCP 发布需审批",
+    "publishApprovalBody": "开启：MCP 排程工具将被拒绝，直到你在网页端操作。关闭：代理可自由排程与取消（信任模式）。",
+    "limitChannels": "已用渠道",
+    "limitPosts": "内容数",
+    "limitContacts": "已追踪联系人",
+    "limitsBody": "免费计划护栏——可通过环境变量调整（FREE_PLAN_MAX_*），0 = 不限。"
   },
   "analytics": {
     "title": "分析",
@@ -107,5 +117,43 @@
   },
   "home": {
     "redirecting": "跳转中…"
+  },
+  "landing": {
+    "navFeatures": "功能",
+    "navStories": "案例",
+    "cta": "开始使用",
+    "github": "源码",
+    "badge": "自托管 · 自带模型密钥 · 开源",
+    "heroTitle": "随处发布。清楚知道谁在点击。",
+    "heroBody": "SpellPaw 是为 AI 原生开发者打造的内容引擎：跨渠道排程发布、附带可追踪短链，让每一次真实点击都沉淀进你的客户关系图谱——并叠加 AI 就绪的用户画像与生命周期状态。",
+    "f1": {
+      "title": "一个编辑器，全渠道覆盖",
+      "body": "一次写作、按渠道适配、按需 AI 改写。基于稳健的 BullMQ 管道排程与发布——发布后即可放手。"
+    },
+    "f2": {
+      "title": "可追踪短链，真实信号",
+      "body": "每篇内容都可附带自托管短链。点击即转化为客户图谱上的 Content Touch——无需第三方分析工具。"
+    },
+    "f3": {
+      "title": "生命周期智能",
+      "body": "联系人随着触达内容从 AWARE 进阶到 ENGAGED。画像信号保持 AI 推导、天然不含 PII。"
+    },
+    "storiesTitle": "为构建者而生",
+    "s1": {
+      "quote": "我每周发布一条产品发布帖。追踪短链告诉我哪篇内容真正带来了转化——而非虚浮的曝光量。",
+      "who": "独立开发者，3 个渠道"
+    },
+    "s2": {
+      "quote": "MCP 客户端帮我起草并排程内容，发布路径由我审批。我的受众图谱在我睡觉时也在增长。",
+      "who": "AI 原生的独立构建者"
+    },
+    "s3": {
+      "quote": "数据完全归我。Postgres、Redis、自备模型密钥——内容和受众之间没有黑盒。",
+      "who": "自托管产品工程师"
+    },
+    "finalTitle": "你的受众就是你的资产。",
+    "finalBody": "从一个渠道、一条追踪链接开始。图谱会完成其余工作。",
+    "footerTag": "为 AI 原生构建者打造的客户生命周期智能",
+    "selfHosted": "自托管"
   }
 }

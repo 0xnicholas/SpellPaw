@@ -88,7 +88,17 @@
     "neverUsed": "never used",
     "lastUsed": "last used {at}",
     "revoke": "Revoke",
-    "noTokens": "No tokens yet."
+    "noTokens": "No tokens yet.",
+    "workspaceTitle": "Workspace",
+    "workspaceBody": "Display name, MCP publish trust, and free-plan usage.",
+    "workspaceNamePlaceholder": "Workspace name",
+    "save": "Save",
+    "publishApproval": "Require approval for MCP publishing",
+    "publishApprovalBody": "On: schedule tools via MCP reject until you use the web app. Off: agents can schedule and cancel freely (trusted mode).",
+    "limitChannels": "Channels used",
+    "limitPosts": "Posts",
+    "limitContacts": "Contacts tracked",
+    "limitsBody": "Free-plan guardrails — env-configurable (FREE_PLAN_MAX_*), 0 = unlimited."
   },
   "analytics": {
     "title": "Analytics",
@@ -107,5 +117,43 @@
   },
   "home": {
     "redirecting": "Redirecting…"
+  },
+  "landing": {
+    "navFeatures": "Features",
+    "navStories": "Stories",
+    "cta": "Get started",
+    "github": "Source code",
+    "badge": "Self-hosted · BYOK · Open source",
+    "heroTitle": "Publish anywhere. Know everyone who clicks.",
+    "heroBody": "SpellPaw is a content engine for AI-native builders: schedule posts across channels, attach tracked short links, and watch a Customer Graph grow from every real click — with AI-ready persona and lifecycle state on top.",
+    "f1": {
+      "title": "One composer, every channel",
+      "body": "Write once, adapt per channel, AI-rewrite on demand. Queue and schedule with a resilient BullMQ pipeline — publish, then forget."
+    },
+    "f2": {
+      "title": "Tracked links, real signals",
+      "body": "Every post can carry a self-hosted short link. Clicks turn into Content Touches on your Customer Graph — no third-party analytics required."
+    },
+    "f3": {
+      "title": "Lifecycle intelligence",
+      "body": "Contacts progress from AWARE to ENGAGED as they touch your content. Persona signals stay AI-derived and PII-free by design."
+    },
+    "storiesTitle": "Built for builders",
+    "s1": {
+      "quote": "I ship a launch thread every week. The tracked links tell me which post actually moved people — not vanity impressions.",
+      "who": "Indie hacker, 3 channels"
+    },
+    "s2": {
+      "quote": "An MCP client drafts and schedules my content; I approve the publish path. My audience graph grows while I sleep.",
+      "who": "AI-native solo builder"
+    },
+    "s3": {
+      "quote": "I own my data. Postgres, Redis, my own model keys — no black box between my content and my audience.",
+      "who": "Self-hosting product engineer"
+    },
+    "finalTitle": "Your audience is your asset.",
+    "finalBody": "Start with one channel and one tracked link. The graph does the rest.",
+    "footerTag": "customer lifecycle intelligence for AI-native builders",
+    "selfHosted": "Self-hosted"
   }
 }

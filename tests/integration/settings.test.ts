@@ -78,6 +78,74 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
+describe("workspace settings + free-plan guardrails (M5)", () => {
+  const WS = `ws-m3-${ACCOUNT}`;
+
+  beforeEach(async () => {
+    await prisma.post.deleteMany({ where: { workspaceId: WS } });
+    await prisma.oAuthConnection.deleteMany({ where: { workspaceId: WS } });
+    await prisma.workspace.update({ where: { id: WS }, data: { name: "M3 test", mcpPublishApproval: true } });
+  });
+
+  it("GET /api/settings/workspace returns settings + plan usage", async () => {
+    const app = makeApp();
+    const res = await jsonRequest(app, "/api/settings/workspace", {
+      headers: { "x-workspace-id": WS },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      workspace: { name: string; mcpPublishApproval: boolean };
+      limits: { maxPosts: number; maxContacts: number; usedPosts: number; usedContacts: number };
+    };
+    expect(body.workspace.name).toBe("M3 test");
+    expect(body.workspace.mcpPublishApproval).toBe(true);
+    expect(body.limits.maxPosts).toBe(50);
+    expect(body.limits.maxContacts).toBe(1000);
+    expect(body.limits.usedPosts).toBe(0);
+    expect(body.limits.usedContacts).toBe(0);
+  });
+
+  it("PATCH /api/settings/workspace updates name and the MCP trust toggle", async () => {
+    const app = makeApp();
+    const res = await jsonRequest(app, "/api/settings/workspace", {
+      method: "PATCH",
+      body: { name: "Renamed", mcpPublishApproval: false },
+      headers: { "x-workspace-id": WS },
+    });
+    expect(res.status).toBe(200);
+    const { workspace } = (await res.json()) as { workspace: { name: string; mcpPublishApproval: boolean } };
+    expect(workspace.name).toBe("Renamed");
+    expect(workspace.mcpPublishApproval).toBe(false);
+
+    // empty patch is a no-op, still 200
+    const noop = await jsonRequest(app, "/api/settings/workspace", {
+      method: "PATCH",
+      body: {},
+      headers: { "x-workspace-id": WS },
+    });
+    expect(noop.status).toBe(200);
+  });
+
+  it("rejects post creation past the FREE_PLAN_MAX_POSTS budget", async () => {
+    const app = makeApp();
+    await prisma.post.createMany({
+      data: Array.from({ length: 50 }, (_, i) => ({
+        workspaceId: WS,
+        status: "DRAFT",
+        title: `seed ${i}`,
+      })),
+    });
+    const res = await jsonRequest(app, "/api/posts", {
+      method: "POST",
+      body: { title: "over budget", variants: [{ channelSlug: "twitter", content: "hello" }] },
+      headers: { "x-workspace-id": WS },
+    });
+    expect(res.status).toBe(429);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toContain("post limit reached");
+  });
+});
+
 describe("model keys", () => {
   it("saves a key encrypted and lists only the preview", async () => {
     const app = makeApp();

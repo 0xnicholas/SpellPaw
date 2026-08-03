@@ -10,7 +10,7 @@ SpellPaw 面向 SMB 和 AI-native builders，将内容营销、客户服务和�
 
 ## 当前阶段
 
-**Phase 1 · M1 + M2 已实现**
+**Phase 1 · M1–M4 已实现，M5 发布就绪进行中**
 
 M1 "Hello Graph"：
 
@@ -32,19 +32,21 @@ M2 "队列 + 排程"：
 - ✅ UI：PostList/Calendar 显示 queued/posting 状态徽章，非终态时 2.5s 轮询
 - ✅ 队列集成测试（9 个，真实 Redis）；全量 76 个测试
 
-**后续里程碑（2026-08 重新审视，ADR 0012）**：
+**里程碑（2026-08 重新审视，ADR 0012）**：
 
-- M3 "AI Sees You"：AI Provider 接入 + MCP Server Phase 1 工具集
-- 【插入】Twitter/X 真实接入（OAuth 四件套 + 发布真实化）——M4 前完成，让 Graph 有真数据
-- M4 "Graph Emerges"：短链接 + ContentTouch 写入 Customer Graph、分析面板、i18n（英文为主，zh 第二）
-- M5 发布就绪：MCP/API 文档、Playwright E2E、部署、性能/安全加固、Landing + 案例（英文叙事）
+- ✅ M3 "AI Sees You"：BYOK AI Provider（OpenAI/Anthropic，密钥加密存储）+ 嵌入式 MCP Server（5 模块 14 Tools，PII 契约）
+- ✅ M4 "Graph Emerges"：自托管短链 + ContentTouch 点击管道 + Customer Graph 真数据、分析面板、i18n（en 主 / zh 次）
+- ✅ M5 发布就绪（进行中）：MCP/API 文档、部署指南、性能/安全加固、Landing + 案例（英文叙事）
+- ⏳ 【插入】Twitter/X 真实接入（OAuth 四件套 + 开发者审核）——真实渠道闭环的前置项
 - M6+ 反馈驱动：Inbox Phase 1 / 分析深度 / 编排引擎（按此顺序）
-- 其余尾项：Calendar 拖拽（M2）、Free plan 护栏式限额（3 Channels / 50 Posts / 1000 Contacts，env 可调，防滥用非付费墙）
+- 其余尾项：Calendar 拖拽改期（M2）、护栏式限额已落地（3/50/1000，env 可调）
 
 - [产品概念设计](docs/design/2026-07-31-spellpaw-concept.md)
 - [Phase 1 PRD](docs/design/spellpaw-prd-phase1.md)
 - [Phase 1 实现规格](docs/design/spellpaw-phase1-implementation.md)
 - [域术语表](CONTEXT.md)
+- [API 文档（REST + MCP 工具）](docs/api.md)
+- [自托管部署指南](docs/ops/DEPLOYMENT.md)
 
 ## 技术栈
 

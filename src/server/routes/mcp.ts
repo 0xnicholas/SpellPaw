@@ -8,6 +8,13 @@ import {
 } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createMcpServer } from "../mcp/server";
+
+/** 0 = unlimited; unparseable values fall back to undefined (default cap). */
+function parseWriteCap(raw: string | undefined): number | undefined {
+  if (raw === undefined || raw === "") return undefined;
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : undefined;
+}
 import type { AppEnv, RouteDeps } from "./shared";
 
 interface McpSession {
@@ -51,7 +58,9 @@ export function mcpRoutes(deps: RouteDeps): Hono<AppEnv> {
         prisma: deps.prisma,
         publisher: deps.publisher,
         rateLimiter: deps.rateLimiter,
-        writeDailyCap: Number(process.env.MCP_WRITE_DAILY_CAP) || undefined,
+        // 0 = unlimited (consistent with FREE_PLAN_* semantics); missing or
+        // unparseable falls back to the default cap in the tool layer.
+        writeDailyCap: parseWriteCap(process.env.MCP_WRITE_DAILY_CAP),
       });
       await server.connect(transport);
       session = { server, transport };

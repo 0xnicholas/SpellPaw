@@ -13,6 +13,7 @@ import { prisma } from "@/lib/db";
 import { getRedis } from "@/lib/redis";
 import { resolveShortLink } from "@/server/shortlinks";
 import { clickQueue } from "@/server/queue";
+import { contactBudgetAvailable } from "@/server/limits";
 
 const VISITOR_COOKIE = "sp_c";
 const COOKIE_MAX_AGE = 365 * 24 * 60 * 60;
@@ -59,9 +60,10 @@ export function createShortLinkHandler(deps: ShortLinkHandlerDeps) {
       headers: { Location: link.targetUrl },
     });
     if (isNewVisitor) {
+      const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
       res.headers.set(
         "Set-Cookie",
-        `${VISITOR_COOKIE}=${contactId}; Path=/; Max-Age=${COOKIE_MAX_AGE}; SameSite=Lax`,
+        `${VISITOR_COOKIE}=${contactId}; Path=/; Max-Age=${COOKIE_MAX_AGE}; SameSite=Lax${secure}`,
       );
     }
     return res;
@@ -83,6 +85,11 @@ async function resolveVisitor(
     });
     if (contact) return { contactId: contact.id, isNewVisitor: false };
   }
+  // Guardrail (ADR-0012): once the free-plan contact budget is exhausted the
+  // redirect degrades to an anonymous touch instead of failing — the redirect
+  // itself must never be blocked by a quota check.
+  const budgetOk = await contactBudgetAvailable(deps.prisma, workspaceId);
+  if (!budgetOk) return { contactId: null, isNewVisitor: false };
   // Create the contact row NOW (not in the worker): the redirect response
   // sets the cookie immediately, and a second click can arrive before the
   // async click job is processed — the upsert makes that race safe.

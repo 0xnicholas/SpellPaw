@@ -191,6 +191,34 @@ describe("click pipeline (applyClick)", () => {
 });
 
 describe("redirect route (cookie loop)", () => {
+  it("degrades to an anonymous touch when the contact budget is exhausted (never blocks the redirect)", async () => {
+    const post = await seedPost("Budget");
+    const v = post.variants[0]!;
+    const link = await createShortLink(prisma, WS, post.id, v.id, "https://example.com/budget");
+    const handler = createShortLinkHandler({ prisma, redisUrl });
+
+    const prev = process.env.FREE_PLAN_MAX_CONTACTS;
+    process.env.FREE_PLAN_MAX_CONTACTS = "1";
+    try {
+      const first = await handler(new Request(`http://test.local/s/${link.code}`), {
+        params: Promise.resolve({ code: link.code }),
+      });
+      expect(first.status).toBe(301);
+      expect(first.headers.get("set-cookie")).toContain("sp_c=");
+      expect(await prisma.contact.count({ where: { workspaceId: WS } })).toBe(1);
+
+      // Budget spent — the redirect still 301s but stops creating contacts.
+      const second = await handler(new Request(`http://test.local/s/${link.code}`), {
+        params: Promise.resolve({ code: link.code }),
+      });
+      expect(second.status).toBe(301);
+      expect(second.headers.get("set-cookie")).toBeNull();
+      expect(await prisma.contact.count({ where: { workspaceId: WS } })).toBe(1);
+    } finally {
+      process.env.FREE_PLAN_MAX_CONTACTS = prev;
+    }
+  });
+
   it("301s, sets the visitor cookie, and reuses the contact on the next click", async () => {
     const post = await seedPost("Loop");
     const v = post.variants[0]!;

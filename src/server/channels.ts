@@ -5,6 +5,7 @@ import type { ChannelAdapter } from "@/adapters/channels/types";
 import { computeCodeChallenge, generatePkceVerifier } from "@/adapters/channels/pkce";
 import { encryptString } from "@/lib/crypto";
 import { ApiError } from "./errors";
+import { enforceChannelLimit } from "./limits";
 
 export async function listChannelsWithStatus(prisma: PrismaClient, workspaceId: string) {
   const channels = await prisma.channel.findMany({
@@ -74,6 +75,7 @@ export async function completeConnect(
   }
   const channel = await prisma.channel.findUnique({ where: { slug: input.channelSlug } });
   if (!channel) throw new ApiError(404, `unknown channel "${input.channelSlug}"`);
+  await enforceChannelLimit(prisma, input.workspaceId);
 
   let tokens;
   try {

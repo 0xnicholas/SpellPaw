@@ -29,6 +29,10 @@ model Workspace {
   // Auth.js user id (JWT session) — Account entity is owned by Auth.js in M1.
   accountId        String
   name             String
+  // MCP publish approval (spec §3): while true, schedule/publish tools via
+  // MCP reject with a "requires approval" error — the web UI is the approved
+  // path. Users can switch to trusted mode here (M5 decision, ADR-0012).
+  mcpPublishApproval Boolean          @default(true)
   createdAt        DateTime         @default(now())
   posts            Post[]
   oauthConnections OAuthConnection[]
