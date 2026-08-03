@@ -94,3 +94,68 @@ describe("TwitterAdapter.publish", () => {
     await expect(adapter.publish("x", { accessToken: "at" })).rejects.toThrow(/duplicate content/);
   });
 });
+
+describe("TwitterAdapter.refresh", () => {
+  it("posts a refresh_token grant with Basic auth and returns the rotated set", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe("https://api.twitter.com/2/oauth2/token");
+      const headers = init?.headers as Record<string, string>;
+      expect(headers["authorization"]).toBe(
+        `Basic ${Buffer.from("client-123:secret-456").toString("base64")}`,
+      );
+      const body = new URLSearchParams(String(init?.body));
+      expect(body.get("grant_type")).toBe("refresh_token");
+      expect(body.get("refresh_token")).toBe("rt-old");
+      return jsonResponse({
+        access_token: "at-new",
+        refresh_token: "rt-new", // Twitter rotates
+        expires_in: 7200,
+      });
+    });
+
+    const adapter = createTwitterAdapter({ ...CLIENT, fetchImpl: fetchMock });
+    const next = await adapter.refresh!({ accessToken: "at-old", refreshToken: "rt-old" });
+    expect(next.accessToken).toBe("at-new");
+    expect(next.refreshToken).toBe("rt-new");
+    expect(next.expiresAt!.getTime()).toBeGreaterThan(Date.now() + 7_000_000);
+  });
+
+  it("keeps the old refresh token when the platform does not rotate", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ access_token: "at-new", expires_in: 7200 }));
+    const adapter = createTwitterAdapter({ ...CLIENT, fetchImpl: fetchMock });
+    const next = await adapter.refresh!({ accessToken: "at-old", refreshToken: "rt-old" });
+    expect(next.refreshToken).toBe("rt-old");
+  });
+
+  it("throws when no refresh token is stored", async () => {
+    const adapter = createTwitterAdapter(CLIENT);
+    await expect(adapter.refresh!({ accessToken: "at" })).rejects.toThrow(/no refresh token/);
+  });
+
+  it("propagates platform errors (revoked token) descriptively", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ error: "invalid_grant" }, 400));
+    const adapter = createTwitterAdapter({ ...CLIENT, fetchImpl: fetchMock });
+    await expect(adapter.refresh!({ accessToken: "at", refreshToken: "rt" })).rejects.toThrow(
+      /invalid_grant/,
+    );
+  });
+});
+
+describe("TwitterAdapter.fetchAccountName", () => {
+  it("returns @username from users/me", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe("https://api.twitter.com/2/users/me");
+      const headers = init?.headers as Record<string, string>;
+      expect(headers["authorization"]).toBe("Bearer at-1");
+      return jsonResponse({ data: { username: "spellpaw_hq" } });
+    });
+    const adapter = createTwitterAdapter({ ...CLIENT, fetchImpl: fetchMock });
+    expect(await adapter.fetchAccountName!({ accessToken: "at-1" })).toBe("@spellpaw_hq");
+  });
+
+  it("returns null instead of throwing when the API fails (cosmetic)", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ errors: [{ message: "nope" }] }, 401));
+    const adapter = createTwitterAdapter({ ...CLIENT, fetchImpl: fetchMock });
+    expect(await adapter.fetchAccountName!({ accessToken: "at" })).toBeNull();
+  });
+});

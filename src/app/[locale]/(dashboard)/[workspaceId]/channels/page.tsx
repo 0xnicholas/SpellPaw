@@ -43,6 +43,7 @@ export default async function ChannelsPage({
           name: c.name,
           connected: c.connections.length > 0,
           connectedAt: c.connections[0]?.connectedAt.toISOString() ?? null,
+          accountName: c.connections[0]?.accountName ?? null,
         }))}
       />
     </div>

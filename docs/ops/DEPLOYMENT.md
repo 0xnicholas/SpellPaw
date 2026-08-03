@@ -85,7 +85,23 @@ pnpm build
 # 重启 pnpm start
 ```
 
-## 7. 安全基线（M5 加固清单）
+## 7. Twitter/X 真实接入（OAuth 2.0 + PKCE）
+
+1. 在 developer.twitter.com 创建项目与应用（Free 档即可），为应用启用
+   OAuth 2.0 并配置回调 URL 为 `https://你的域名/api/channels/twitter/callback`（与
+   `TWITTER_OAUTH_REDIRECT_URI` 完全一致）。
+2. 申请权限：`tweet.read` + `tweet.write` + `users.read` + `offline.access`
+   （offline.access 是获取 refresh token 的前提——令牌 2 小时过期，发布时
+   自动刷新并回写，无需用户重新授权）。
+3. 将 Client ID / Secret 填入 `TWITTER_CLIENT_ID` / `TWITTER_CLIENT_SECRET`。
+4. 三件套齐全时 registry 自动使用真实 adapter；缺失则回退 MockAdapter
+   （仅演示，点击渠道页 Connect 即一步完成）。
+5. 连接成功后渠道列表显示平台账号（`@handle`，连接时从 `users/me` 拉取，
+   失败不影响连接）；连接凭据 AES-256-GCM 静态加密存储。
+6. 刷新令牌失效（用户撤销授权等）时发布标记为 FAILED（不重试，避免无意义
+   重试循环），错误信息包含 "reconnect the channel in Settings" 提示。
+
+## 8. 安全基线（M5 加固清单）
 
 - 依赖审计：`pnpm audit --prod`（CI 中执行）
 - API 响应带安全头（nosniff / X-Frame-Options DENY / Referrer-Policy / Permissions-Policy）

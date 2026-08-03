@@ -10,9 +10,10 @@ import {
   validateVariantContent,
 } from "@/domain/post";
 import { ApiError } from "./errors";
-import { decryptString } from "@/lib/crypto";
+import { decryptString, encryptString } from "@/lib/crypto";
 import { enforcePostLimit } from "./limits";
 import type { Publisher } from "./publisher";
+import type { TokenSet } from "@/adapters/channels/types";
 
 export interface VariantInput {
   channelSlug: string;
@@ -195,17 +196,60 @@ export async function publishVariantToChannel(
   }
 
   try {
-    const accessToken = decryptString(connection.accessToken, encryptionKey);
-    await adapter.publish(variant.content, { accessToken });
+    let tokens: TokenSet = {
+      accessToken: decryptString(connection.accessToken, encryptionKey),
+      refreshToken: connection.refreshToken
+        ? decryptString(connection.refreshToken, encryptionKey)
+        : null,
+      expiresAt: connection.expiresAt,
+    };
+    // Platforms with rotating access tokens (X: 2h) get a silent refresh when
+    // stale, and the rotated set is written back (encrypted) for next time.
+    // A failed refresh means the grant is dead (revoked/expired refresh token)
+    // — permanent, like "channel not connected": mark FAILED, skip retries.
+    if (adapter.refresh && needsRefresh(tokens)) {
+      let rotated: TokenSet;
+      try {
+        rotated = await adapter.refresh(tokens);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const reason = `token refresh failed: ${message} — reconnect the channel in Settings`;
+        await prisma.postVariant.update({
+          where: { id: variant.id },
+          data: markVariantFailed(reason),
+        });
+        throw new PermanentPublishError(reason);
+      }
+      await prisma.oAuthConnection.update({
+        where: { id: connection.id },
+        data: {
+          accessToken: encryptString(rotated.accessToken, encryptionKey),
+          refreshToken: rotated.refreshToken
+            ? encryptString(rotated.refreshToken, encryptionKey)
+            : null,
+          expiresAt: rotated.expiresAt ?? null,
+        },
+      });
+      tokens = rotated;
+    }
+    await adapter.publish(variant.content, tokens);
     await prisma.postVariant.update({
       where: { id: variant.id },
       data: markVariantPublished(new Date()),
     });
     return { state: "published" };
   } catch (err) {
+    // Permanent failures must escape to the queue worker so it skips retries.
+    if (err instanceof PermanentPublishError) throw err;
     const message = err instanceof Error ? err.message : String(err);
     return { state: "failed", message };
   }
+}
+
+/** Refresh only when we know the token expires and it is stale (5 min margin). */
+function needsRefresh(tokens: TokenSet): boolean {
+  if (!tokens.expiresAt) return false;
+  return tokens.expiresAt.getTime() <= Date.now() + 5 * 60 * 1000;
 }
 
 /**

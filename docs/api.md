@@ -31,7 +31,7 @@
 
 | 端点 | 方法 | 说明 |
 |------|------|------|
-| `/api/channels` | GET | 各渠道状态（connected / mock） |
+| `/api/channels` | GET | 各渠道状态（connected / mock），已连接时含 `accountName`（平台 @handle） |
 | `/api/channels/:slug/connect` | POST | 启动 OAuth（返回授权 URL；state/verifier 入 cookie） |
 | `/api/channels/:slug/callback` | GET | OAuth 回调（连接数超 `FREE_PLAN_MAX_CHANNELS` 时回调 302 回 channels 页并带 `?error=connect_failed`） |
 | `/api/channels/:slug` | DELETE | 断开 |

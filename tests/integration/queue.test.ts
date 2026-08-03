@@ -13,6 +13,8 @@ import {
   type RunningWorkers,
 } from "@/server/queue";
 import { publishJobId, publishQueueName, schedulerJobId } from "@/server/queue-domain";
+import { publishVariantToChannel } from "@/server/posts";
+import { decryptString } from "@/lib/crypto";
 import type { Publisher } from "@/server/publisher";
 import { resetTestSchema, TEST_DATABASE_URL } from "./setup";
 
@@ -292,5 +294,141 @@ describe("reconciler", () => {
     const variant = await prisma.postVariant.findUniqueOrThrow({ where: { id: post.variants[0].id } });
     expect(variant.publishState).toBe("FAILED");
     expect(variant.errorMessage).toBe("rate limited");
+  });
+});
+
+describe("publish-time token refresh (X offline.access)", () => {
+  it("refreshes a stale token, writes the rotated set back, then publishes", async () => {
+    const post = await createPost("twitter", "refresh me");
+    const workspace = await prisma.workspace.findFirstOrThrow({ where: { accountId: ACCOUNT } });
+    const channel = await prisma.channel.findUniqueOrThrow({ where: { slug: "twitter" } });
+    await prisma.oAuthConnection.upsert({
+      where: { workspaceId_channelId: { workspaceId: workspace.id, channelId: channel.id } },
+      update: {
+        accessToken: encryptString("stale-access", KEY),
+        refreshToken: encryptString("stale-refresh", KEY),
+        expiresAt: new Date(Date.now() - 60 * 60 * 1000), // expired an hour ago
+      },
+      create: {
+        workspaceId: workspace.id,
+        channelId: channel.id,
+        accessToken: encryptString("stale-access", KEY),
+        refreshToken: encryptString("stale-refresh", KEY),
+        expiresAt: new Date(Date.now() - 60 * 60 * 1000),
+      },
+    });
+
+    let publishToken = "";
+    const adapter: ChannelAdapter = {
+      slug: "twitter",
+      buildAuthUrl: () => "",
+      exchangeCode: async () => ({ accessToken: "x", refreshToken: "rt", expiresAt: null }),
+      publish: async (_c, tokens) => {
+        publishToken = tokens.accessToken;
+        return { externalId: "t-1" };
+      },
+      refresh: async (tokens) => {
+        expect(tokens.refreshToken).toBe("stale-refresh");
+        return { accessToken: "fresh-access", refreshToken: "fresh-refresh", expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000) };
+      },
+    };
+
+    const outcome = await publishVariantToChannel(
+      prisma,
+      { twitter: adapter },
+      KEY,
+      { id: post.variants[0].id, content: post.variants[0].content, channel: { slug: "twitter" }, channelId: channel.id },
+      workspace.id,
+    );
+    expect(outcome.state).toBe("published");
+    expect(publishToken).toBe("fresh-access"); // publish used the rotated token
+
+    const conn = await prisma.oAuthConnection.findUniqueOrThrow({
+      where: { workspaceId_channelId: { workspaceId: workspace.id, channelId: channel.id } },
+    });
+    expect(decryptString(conn.accessToken, KEY)).toBe("fresh-access");
+    expect(decryptString(conn.refreshToken!, KEY)).toBe("fresh-refresh");
+  });
+
+  it("does not refresh a token that is still valid", async () => {
+    const post = await createPost("twitter", "no refresh needed");
+    const workspace = await prisma.workspace.findFirstOrThrow({ where: { accountId: ACCOUNT } });
+    const channel = await prisma.channel.findUniqueOrThrow({ where: { slug: "twitter" } });
+    await prisma.oAuthConnection.upsert({
+      where: { workspaceId_channelId: { workspaceId: workspace.id, channelId: channel.id } },
+      update: { accessToken: encryptString("valid-access", KEY), expiresAt: new Date(Date.now() + 60 * 60 * 1000) },
+      create: {
+        workspaceId: workspace.id,
+        channelId: channel.id,
+        accessToken: encryptString("valid-access", KEY),
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+    });
+
+    let refreshes = 0;
+    const adapter: ChannelAdapter = {
+      slug: "twitter",
+      buildAuthUrl: () => "",
+      exchangeCode: async () => ({ accessToken: "x" }),
+      publish: async () => ({ externalId: "t-2" }),
+      refresh: async () => {
+        refreshes++;
+        return { accessToken: "rotated" };
+      },
+    };
+    const outcome = await publishVariantToChannel(
+      prisma,
+      { twitter: adapter },
+      KEY,
+      { id: post.variants[0].id, content: post.variants[0].content, channel: { slug: "twitter" }, channelId: channel.id },
+      workspace.id,
+    );
+    expect(outcome.state).toBe("published");
+    expect(refreshes).toBe(0);
+  });
+
+  it("treats a dead grant as a permanent failure (no retry loop)", async () => {
+    const post = await createPost("twitter", "dead grant");
+    const workspace = await prisma.workspace.findFirstOrThrow({ where: { accountId: ACCOUNT } });
+    const channel = await prisma.channel.findUniqueOrThrow({ where: { slug: "twitter" } });
+    await prisma.oAuthConnection.upsert({
+      where: { workspaceId_channelId: { workspaceId: workspace.id, channelId: channel.id } },
+      update: { accessToken: encryptString("dead-access", KEY), refreshToken: encryptString("dead-refresh", KEY), expiresAt: new Date(Date.now() - 1000) },
+      create: {
+        workspaceId: workspace.id,
+        channelId: channel.id,
+        accessToken: encryptString("dead-access", KEY),
+        refreshToken: encryptString("dead-refresh", KEY),
+        expiresAt: new Date(Date.now() - 1000),
+      },
+    });
+
+    const adapter: ChannelAdapter = {
+      slug: "twitter",
+      buildAuthUrl: () => "",
+      exchangeCode: async () => ({ accessToken: "x" }),
+      publish: async () => ({ externalId: "t-3" }),
+      refresh: async () => {
+        throw new Error("invalid_grant: refresh token revoked");
+      },
+    };
+    // PermanentPublishError escapes to the queue worker, which must not retry.
+    await expect(
+      publishVariantToChannel(
+        prisma,
+        { twitter: adapter },
+        KEY,
+        {
+          id: post.variants[0].id,
+          content: post.variants[0].content,
+          channel: { slug: "twitter" },
+          channelId: channel.id,
+        },
+        workspace.id,
+      ),
+    ).rejects.toThrow(/token refresh failed/);
+    const variant = await prisma.postVariant.findUniqueOrThrow({ where: { id: post.variants[0].id } });
+    expect(variant.publishState).toBe("FAILED");
+    expect(variant.errorMessage).toContain("invalid_grant");
   });
 });

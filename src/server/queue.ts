@@ -296,10 +296,14 @@ export function createWorkers(deps: WorkerDeps): RunningWorkers {
   const publisher = createPublisher(deps);
 
   const publishWorkers = Object.keys(deps.adapters).map((slug) => {
+    // Per-channel queue, concurrency 1: publishes for one channel serialize, so
+    // two same-channel jobs can never refresh the same token concurrently
+    // (X rotates refresh tokens — a concurrent second refresh would die with
+    // invalid_grant and spuriously FAIL a healthy variant).
     const worker = new Worker<PublishJobData>(
       publishQueueName(slug),
       (job) => publishJobProcessor(deps, job),
-      { connection, concurrency: deps.concurrency ?? 5 },
+      { connection, concurrency: 1 },
     );
     // Transient failure exhausted all attempts → persist FAILED.
     worker.on("failed", async (job, err) => {

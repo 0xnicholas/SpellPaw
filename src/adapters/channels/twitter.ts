@@ -12,8 +12,40 @@ export interface TwitterAdapterConfig {
 const AUTHORIZE_URL = "https://twitter.com/i/oauth2/authorize";
 const TOKEN_URL = "https://api.twitter.com/2/oauth2/token";
 const TWEETS_URL = "https://api.twitter.com/2/tweets";
+const USERS_ME_URL = "https://api.twitter.com/2/users/me";
 const SCOPE = "tweet.read tweet.write users.read offline.access";
 
+interface TokenResponse {
+  access_token?: string;
+  refresh_token?: string;
+  expires_in?: number;
+  error?: string;
+  error_description?: string;
+}
+
+/** Shared POST to the token endpoint with Basic auth (RFC 6749 §4.1.3). */
+async function tokenRequest(
+  doFetch: typeof fetch,
+  config: TwitterAdapterConfig,
+  body: Record<string, string>,
+): Promise<TokenResponse & { access_token: string }> {
+  const basic = Buffer.from(`${config.clientId}:${config.clientSecret}`).toString("base64");
+  const res = await doFetch(TOKEN_URL, {
+    method: "POST",
+    headers: {
+      authorization: `Basic ${basic}`,
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams(body).toString(),
+  });
+  const json = (await res.json().catch(() => ({}))) as TokenResponse;
+  if (!res.ok || !json.access_token) {
+    throw new Error(
+      `Twitter OAuth token request failed: ${json.error_description ?? json.error ?? res.status}`,
+    );
+  }
+  return json as TokenResponse & { access_token: string };
+}
 export function createTwitterAdapter(config: TwitterAdapterConfig): ChannelAdapter {
   const doFetch = config.fetchImpl ?? globalThis.fetch;
 
@@ -34,37 +66,48 @@ export function createTwitterAdapter(config: TwitterAdapterConfig): ChannelAdapt
     },
 
     async exchangeCode(code: string, redirectUri: string, codeVerifier: string): Promise<TokenSet> {
-      const basic = Buffer.from(`${config.clientId}:${config.clientSecret}`).toString("base64");
-      const res = await doFetch(TOKEN_URL, {
-        method: "POST",
-        headers: {
-          authorization: `Basic ${basic}`,
-          "content-type": "application/x-www-form-urlencoded",
-        },
-        body: new URLSearchParams({
-          grant_type: "authorization_code",
-          code,
-          redirect_uri: redirectUri,
-          code_verifier: codeVerifier,
-        }).toString(),
+      const json = await tokenRequest(doFetch, config, {
+        grant_type: "authorization_code",
+        code,
+        redirect_uri: redirectUri,
+        code_verifier: codeVerifier,
       });
-      const json = (await res.json().catch(() => ({}))) as {
-        access_token?: string;
-        refresh_token?: string;
-        expires_in?: number;
-        error?: string;
-        error_description?: string;
-      };
-      if (!res.ok || !json.access_token) {
-        throw new Error(
-          `Twitter OAuth token exchange failed: ${json.error_description ?? json.error ?? res.status}`,
-        );
-      }
       return {
         accessToken: json.access_token,
         refreshToken: json.refresh_token ?? null,
         expiresAt: json.expires_in ? new Date(Date.now() + json.expires_in * 1000) : null,
       };
+    },
+
+    async refresh(tokens: TokenSet): Promise<TokenSet> {
+      if (!tokens.refreshToken) {
+        throw new Error("Twitter refresh failed: no refresh token stored");
+      }
+      const json = await tokenRequest(doFetch, config, {
+        grant_type: "refresh_token",
+        refresh_token: tokens.refreshToken,
+      });
+      // Twitter rotates refresh tokens; keep the newest one for the next round.
+      return {
+        accessToken: json.access_token,
+        refreshToken: json.refresh_token ?? tokens.refreshToken,
+        expiresAt: json.expires_in ? new Date(Date.now() + json.expires_in * 1000) : null,
+      };
+    },
+
+    async fetchAccountName(tokens: TokenSet): Promise<string | null> {
+      const res = await doFetch(USERS_ME_URL, {
+        headers: { authorization: `Bearer ${tokens.accessToken}` },
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        data?: { username?: string };
+        errors?: Array<{ message?: string }>;
+      };
+      if (!res.ok || !json.data?.username) {
+        // Cosmetic — a failed name fetch must not fail the connection.
+        return null;
+      }
+      return `@${json.data.username}`;
     },
 
     async publish(content: string, tokens: TokenSet): Promise<PublishResult> {

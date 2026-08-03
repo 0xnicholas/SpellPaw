@@ -107,6 +107,9 @@ model OAuthConnection {
   accessToken  String
   refreshToken String?
   expiresAt    DateTime?
+  // Human-readable account name on the platform (e.g. "@handle" on X).
+  // Cosmetic — fetched at connect time, never blocks the connection.
+  accountName  String?
   connectedAt  DateTime  @default(now())
 
   channel   Channel   @relation(fields: [channelId], references: [id])

@@ -23,4 +23,18 @@ export interface ChannelAdapter {
 
   /** Publish variant content to the platform. */
   publish(content: string, tokens: TokenSet): Promise<PublishResult>;
+
+  /**
+   * OPTIONAL: rotate an expired token set (platforms with offline access).
+   * Implementations must throw on an invalid/revoked refresh token so the
+   * caller can surface a clear permanent failure. Absent = no refresh support
+   * (mock adapters, platforms without refresh tokens).
+   */
+  refresh?(tokens: TokenSet): Promise<TokenSet>;
+
+  /**
+   * OPTIONAL: the human-readable account name shown for a connection
+   * (e.g. "@handle" on X). Absent = the channel's static name is shown.
+   */
+  fetchAccountName?(tokens: TokenSet): Promise<string | null>;
 }

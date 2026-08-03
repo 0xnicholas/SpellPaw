@@ -122,3 +122,7 @@ MCP 排程类工具的信任开关（Workspace.mcpPublishApproval，默认开启
 防滥用上限而非付费墙——3 Channels / 50 Posts / 1000 Contacts，环境变量可调（0 = 不限）。交互式创建路径超限返回 429；短链重定向永不因限额失败，超限自动降级为匿名 Touch。
 *Avoid*: quota, paywall, billing
 
+**Token Refresh（令牌刷新）**:
+平台 access token 过期（X 为 2 小时）时，发布路径在调用平台前静默刷新（offline.access），旋转后的凭据加密回写 OAuthConnection。刷新失败视为凭据失效（永久失败，不重试），提示用户重新连接。
+*Avoid*: reauthorization, token rotation ceremony
+

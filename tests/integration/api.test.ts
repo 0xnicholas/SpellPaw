@@ -52,17 +52,21 @@ function syncPublisher(adapters: Record<string, ChannelAdapter>): Publisher {
   };
 }
 
+function defaultAdapters() {
+  return {
+    twitter: new MockAdapter("twitter"),
+    linkedin: new MockAdapter("linkedin"),
+    instagram: new MockAdapter("instagram"),
+  };
+}
+
 function makeApp(options?: {
   getAccountId?: (c: Context) => Promise<string | null>;
   adapters?: Record<string, ChannelAdapter>;
   /** No authenticated identity — for anonymous endpoints (health). */
   anonymous?: boolean;
 }) {
-  const adapters = options?.adapters ?? {
-    twitter: new MockAdapter("twitter"),
-    linkedin: new MockAdapter("linkedin"),
-    instagram: new MockAdapter("instagram"),
-  };
+  const adapters = options?.adapters ?? defaultAdapters();
   const app = createApiApp({
     prisma,
     encryptionKey: KEY,
@@ -553,6 +557,36 @@ describe("channel connect flow (HTTP)", () => {
     const { channels: list } = await channels.json();
     const twitter = list.find((c: { slug: string }) => c.slug === "twitter");
     expect(twitter.connected).toBe(true);
+    // Mock adapters don't implement fetchAccountName → no @handle, stays null.
+    expect(twitter.accountName).toBeNull();
+  });
+
+  it("stores the platform account name when the adapter provides one", async () => {
+    const named = {
+      slug: "twitter",
+      buildAuthUrl: (state: string, redirectUri: string) =>
+        `${redirectUri}?code=named-code&state=${state}&challenge=named`,
+      exchangeCode: async () => ({
+        accessToken: "at",
+        refreshToken: "rt",
+        expiresAt: new Date(Date.now() + 3600_000),
+      }),
+      publish: async () => ({ externalId: "t" }),
+      fetchAccountName: async () => "@spellpaw_hq",
+    } as unknown as MockAdapter;
+    const app = makeApp({ adapters: { ...defaultAdapters(), twitter: named } });
+    const connect = await jsonRequest(app, "/api/channels/twitter/connect", { method: "POST" });
+    const { url } = await connect.json();
+    const callbackUrl = new URL(url);
+    const cbRes = await app.request(callbackUrl.pathname + callbackUrl.search, {
+      headers: { cookie: extractCookies(connect.headers.get("set-cookie")) },
+    });
+    expect(cbRes.status).toBe(302);
+    expect(cbRes.headers.get("location")).toContain("connected=twitter");
+    const channels = await jsonRequest(app, "/api/channels");
+    const { channels: list } = await channels.json();
+    const twitter = list.find((c: { slug: string }) => c.slug === "twitter");
+    expect(twitter.accountName).toBe("@spellpaw_hq");
   });
 
   it("rejects a callback with a mismatched state", async () => {

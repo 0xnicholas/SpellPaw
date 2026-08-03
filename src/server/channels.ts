@@ -10,7 +10,12 @@ import { enforceChannelLimit } from "./limits";
 export async function listChannelsWithStatus(prisma: PrismaClient, workspaceId: string) {
   const channels = await prisma.channel.findMany({
     orderBy: { slug: "asc" },
-    include: { connections: { where: { workspaceId }, select: { id: true, connectedAt: true } } },
+    include: {
+      connections: {
+        where: { workspaceId },
+        select: { id: true, connectedAt: true, accountName: true },
+      },
+    },
   });
   return channels.map((c) => ({
     id: c.id,
@@ -18,6 +23,7 @@ export async function listChannelsWithStatus(prisma: PrismaClient, workspaceId: 
     name: c.name,
     connected: c.connections.length > 0,
     connectedAt: c.connections[0]?.connectedAt ?? null,
+    accountName: c.connections[0]?.accountName ?? null,
   }));
 }
 
@@ -56,6 +62,18 @@ function tokenRow(tokens: Awaited<ReturnType<ChannelAdapter["exchangeCode"]>>, k
   };
 }
 
+/** Cosmetic account name (e.g. "@handle") — failures never fail the connect. */
+async function fetchAccountName(
+  adapter: ChannelAdapter,
+  tokens: { accessToken: string },
+): Promise<string | null> {
+  try {
+    return (await adapter.fetchAccountName?.(tokens)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function completeConnect(
   prisma: PrismaClient,
   adapter: ChannelAdapter,
@@ -85,16 +103,20 @@ export async function completeConnect(
     throw new ApiError(502, `connect failed: ${message}`);
   }
 
+  const accountName = await fetchAccountName(adapter, tokens);
+
   return prisma.oAuthConnection.upsert({
     where: { workspaceId_channelId: { workspaceId: input.workspaceId, channelId: channel.id } },
     update: {
       ...tokenRow(tokens, input.encryptionKey),
+      accountName,
       connectedAt: new Date(),
     },
     create: {
       workspaceId: input.workspaceId,
       channelId: channel.id,
       ...tokenRow(tokens, input.encryptionKey),
+      accountName,
     },
   });
 }

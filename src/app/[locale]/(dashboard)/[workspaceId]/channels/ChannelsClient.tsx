@@ -9,6 +9,7 @@ interface ChannelRow {
   name: string;
   connected: boolean;
   connectedAt: string | null;
+  accountName: string | null;
 }
 
 export function ChannelsClient({
@@ -67,9 +68,17 @@ export function ChannelsClient({
               <span className="font-medium text-zinc-900">{channel.name}</span>
             </div>
             <p className="mt-0.5 pl-4 text-xs text-zinc-500">
-              {channel.connected
-                ? `Connected ${channel.connectedAt ? new Date(channel.connectedAt).toLocaleDateString() : ""}`
-                : "Not connected"}
+              {channel.connected ? (
+                <>
+                  {channel.accountName ? (
+                    <span className="mr-1 font-medium text-zinc-700">{channel.accountName}</span>
+                  ) : null}
+                  Connected{" "}
+                  {channel.connectedAt ? new Date(channel.connectedAt).toLocaleDateString() : ""}
+                </>
+              ) : (
+                "Not connected"
+              )}
             </p>
           </div>
           {channel.connected ? (
