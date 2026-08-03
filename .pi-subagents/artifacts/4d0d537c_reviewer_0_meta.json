@@ -1,0 +1,187 @@
+{
+  "runId": "4d0d537c",
+  "agent": "reviewer",
+  "task": "[Read from: /Users/nicholasl/Documents/build-whatever/SpellPaw/plan.md, /Users/nicholasl/Documents/build-whatever/SpellPaw/progress.md]\n\nYou are the STANDARDS axis of a code review for the SpellPaw M3 milestone (BYOK AI provider + embedded MCP server) — staged changes on top of commit 5ceb394.\n\nFixed point: commit 5ceb394. Diff command (run from /Users/nicholasl/Documents/build-whatever/SpellPaw):\n  git diff 5ceb394 --cached -- . ':(exclude)pnpm-lock.yaml'\n\nStandards sources: AGENTS.md, docs/agents/*, CONTEXT.md (ubiquitous language), and docs/design/spellpaw-phase1-implementation.md (AI keys encrypted AES-256-GCM; MCP embedded ADR-0010; BYOK ADR-0005; PII contract: contact.get never returns profile_* columns; spec §6 rate limits AI generate 10/min; §8 error taxonomy MODEL_KEY_INVALID/MODEL_KEY_QUOTA).\n\nPlus this fixed smell baseline (Fowler, Refactoring ch.3) — each is a labelled judgement call, never a hard violation; a documented repo standard overrides the baseline; skip anything tooling enforces (typecheck/lint):\n- Mysterious Name — name doesn't reveal what it does → rename.\n- Duplicated Code — same logic shape in more than one hunk/file → extract shared shape.\n- Feature Envy — method reaches into another object's data more than its own.\n- Data Clumps — same few fields/params travel together → bundle into one type.\n- Primitive Obsession — primitive standing in for a domain concept → give it its own small type.\n- Repeated Switches — same switch/if-cascade on the same type recurs → one map both sites share.\n- Shotgun Surgery — one logical change forces scattered edits → gather into one module.\n- Divergent Change — one file edited for several unrelated reasons → split.\n- Speculative Generality — abstraction/params/hooks for needs the spec doesn't have → delete.\n- Message Chains — long a.b().c().d() navigation → hide behind one method.\n- Middle Man — class that mostly delegates onward → cut it.\n- Refused Bequest — implementer ignores most of what it inherits → composition.\n\nAlso scrutinize: auth boundaries (MCP bearer vs session; middleware ordering in http.ts; token hash-at-rest; token shown-once UX), encryption handling of model keys vs OAuth tokens, session lifecycle of the MCP transport (in-memory Map growth/leaks), the two source-of-truth NON_PII_SELECT copies (contacts route vs mcp server), rate limiter Redis connection lifecycle (module-scoped connection; multiple limiter instances), and the sync publisher fake drift.\n\nBrief: Report — per file/hunk where relevant — (a) every place the diff violates a documented standard: cite the standard (file + the rule); and (b) any baseline smell you spot: name it and quote the hunk. Distinguish hard violations from judgement calls — documented-standard breaches can be hard, but baseline smells are always judgement calls, and a documented repo standard overrides the baseline. Skip anything tooling enforces. Under 400 words.",
+  "exitCode": 0,
+  "usage": {
+    "input": 45587,
+    "output": 17589,
+    "cacheRead": 938496,
+    "cacheWrite": 0,
+    "cost": 0.0139348888,
+    "turns": 23
+  },
+  "model": "deepseek/deepseek-v4-flash:high",
+  "attemptedModels": [
+    "deepseek/deepseek-v4-flash:high"
+  ],
+  "modelAttempts": [
+    {
+      "model": "deepseek/deepseek-v4-flash:high",
+      "success": true,
+      "exitCode": 0,
+      "usage": {
+        "input": 45587,
+        "output": 17589,
+        "cacheRead": 938496,
+        "cacheWrite": 0,
+        "cost": 0.0139348888,
+        "turns": 23
+      }
+    }
+  ],
+  "durationMs": 225221,
+  "toolCount": 39,
+  "launchContractDigest": "908b3c0938e12dea67f6cdbf67b06329791f354abe4f2b0807ae32160c714084",
+  "launchResolvedExtensions": {
+    "version": 1,
+    "source": "launch-resolved",
+    "disableAmbientExtensions": false,
+    "runtime": [
+      "sha256:9af91292ea4e4f50"
+    ],
+    "configured": [],
+    "effective": [
+      "sha256:9af91292ea4e4f50"
+    ],
+    "omitted": {
+      "runtime": 0,
+      "configured": 0,
+      "effective": 0
+    }
+  },
+  "acceptance": {
+    "status": "attested",
+    "evidenceStatus": "attested",
+    "explicit": false,
+    "effectiveAcceptance": {
+      "level": "attested",
+      "explicit": false,
+      "inferredReason": [
+        "read-only/reviewer-style agent"
+      ],
+      "criteria": [
+        {
+          "id": "criterion-1",
+          "must": "Return concrete findings with file paths and severity when applicable",
+          "evidence": [
+            "review-findings",
+            "residual-risks"
+          ],
+          "severity": "required"
+        }
+      ],
+      "evidence": [
+        "review-findings",
+        "residual-risks"
+      ],
+      "verify": [],
+      "stopRules": []
+    },
+    "inferredReason": [
+      "read-only/reviewer-style agent"
+    ],
+    "criteria": [
+      {
+        "id": "criterion-1",
+        "must": "Return concrete findings with file paths and severity when applicable",
+        "evidence": [
+          "review-findings",
+          "residual-risks"
+        ],
+        "severity": "required"
+      }
+    ],
+    "runtimeChecks": [],
+    "verifyRuns": [],
+    "childReport": {
+      "criteriaSatisfied": [
+        {
+          "id": "criterion-1",
+          "status": "satisfied",
+          "evidence": "27 staged files reviewed against the staged diff of 5ceb394; findings cite file:line (contacts.ts:37, model-keys.ts:109, mcp/server.ts:331, Composer.tsx:126); standards checked against docs/design/spellpaw-phase1-implementation.md §3/§6/§8, ADR-0005, ADR-0010, CONTEXT.md"
+        }
+      ],
+      "changedFiles": [
+        "src/server/http.ts",
+        "src/server/mcp/server.ts",
+        "src/server/routes/mcp.ts",
+        "src/server/routes/ai.ts",
+        "src/server/routes/contacts.ts",
+        "src/server/routes/settings.ts",
+        "src/server/routes/shared.ts",
+        "src/server/routes/{posts,schedule,calendar,channels,variants}.ts",
+        "src/server/model-keys.ts",
+        "src/server/api-tokens.ts",
+        "src/lib/ai/providers.ts",
+        "src/lib/rate-limit.ts",
+        "prisma/schema.prisma",
+        "prisma/migrations/20260803103202_m3_ai_provider_contacts/migration.sql",
+        "src/app/(dashboard)/[workspaceId]/settings/{SettingsClient.tsx,page.tsx}",
+        "src/app/(dashboard)/[workspaceId]/content/Composer.tsx",
+        "src/app/api/[[...route]]/route.ts",
+        "src/components/DashboardNav.tsx",
+        "tests/integration/mcp.test.ts",
+        "tests/integration/settings.test.ts",
+        "src/lib/ai/providers.test.ts"
+      ],
+      "testsAddedOrUpdated": [
+        "src/lib/ai/providers.test.ts",
+        "tests/integration/mcp.test.ts",
+        "tests/integration/settings.test.ts"
+      ],
+      "commandsRun": [
+        {
+          "command": "git diff 5ceb394 --cached -- . ':(exclude)pnpm-lock.yaml'",
+          "result": "passed",
+          "summary": "Full staged diff reviewed (27 files, +2457/-272)"
+        },
+        {
+          "command": "npx vitest run",
+          "result": "passed",
+          "summary": "105/105 tests pass; 1 unhandled-rejection warning in providers.test.ts timeout test"
+        },
+        {
+          "command": "npx vitest run tests/integration/mcp.test.ts tests/integration/settings.test.ts",
+          "result": "passed",
+          "summary": "18/18 M3 integration tests pass (Postgres/Redis up)"
+        }
+      ],
+      "validationOutput": [
+        "Standards verified: AES-256-GCM at rest (spec §6); AI generate 10/min; §8 taxonomy; PII contract (no profile_*); MCP 5 modules/14 tools; write cap; ADR-0005/0010; CONTEXT terms"
+      ],
+      "residualRisks": [
+        "mcp/server.ts:331 NON_PII_SELECT drifts from routes/contacts.ts:9 (missing createdAt)",
+        "touchModelKeyCheck dead — §8 key-degradation UX unreachable",
+        "contacts.ts:37 ZodError.parse yields 500 on malformed query params",
+        "Redis-down → rate-limiter throws → 500; no degradation path",
+        "MCP session Map unbounded, not token-bound, worker-pinned",
+        "getActiveModelKey prefers oldest key for a provider"
+      ],
+      "noStagedFiles": false,
+      "diffSummary": "M3 milestone: BYOK AI provider (model keys AES-256-GCM, /api/ai/generate, settings UI), workspace bearer API tokens, embedded MCP server (14 tools, streamable HTTP, session map), contacts Customer Graph read surface, Redis rate limiter; monolithic http.ts split into route modules",
+      "reviewFindings": [
+        "bug: src/server/routes/contacts.ts:37 - listQuerySchema.parse throws ZodError -> 500 on bad limit; use safeParse -> ApiError(400)",
+        "bug: Composer.tsx:126 - literal {activeChannel.name} in tooltip title",
+        "duplicated-code: NON_PII_SELECT copied in contacts.ts:9 and mcp/server.ts:331 with drift (createdAt)",
+        "duplicated-code: schedule.set/reschedule identical in mcp/server.ts:150-199",
+        "duplicated-code: keyPreview inline at model-keys.ts:59 vs providers.ts:120",
+        "dead-code/speculative: touchModelKeyCheck (model-keys.ts:109) never called; isActive=false unreachable",
+        "note: rate-limit.ts has no close(); Redis outage -> 500s",
+        "note: MCP sessions not token-bound; no TTL; multi-worker pinning risk",
+        "note: providers.test.ts timeout test emits unhandled-rejection warning",
+        "no blockers; documented standards (spec §6/§8, ADR-0005/0010, PII contract) are satisfied"
+      ],
+      "manualNotes": "plan.md/progress.md do not exist in the repo; reviewed the staged diff directly. All 105 tests pass; the vitest 'Errors: 1' line is the unhandled-rejection warning in providers.test.ts, not a failure."
+    }
+  },
+  "effects": {
+    "fileMutation": {
+      "status": "not-applicable",
+      "expected": false,
+      "attempted": true
+    }
+  },
+  "transcriptPath": "/Users/nicholasl/Documents/build-whatever/SpellPaw/.pi-subagents/artifacts/4d0d537c_reviewer_0_transcript.jsonl",
+  "timestamp": 1785754590072
+}

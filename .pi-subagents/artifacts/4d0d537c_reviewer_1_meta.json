@@ -1,0 +1,187 @@
+{
+  "runId": "4d0d537c",
+  "agent": "reviewer",
+  "task": "[Read from: /Users/nicholasl/Documents/build-whatever/SpellPaw/plan.md, /Users/nicholasl/Documents/build-whatever/SpellPaw/progress.md]\n\nYou are the SPEC axis of a code review for the SpellPaw M3 milestone (BYOK AI provider + embedded MCP server) — staged changes on top of commit 5ceb394.\n\nFixed point: commit 5ceb394. Diff command (run from /Users/nicholasl/Documents/build-whatever/SpellPaw):\n  git diff 5ceb394 --cached -- . ':(exclude)pnpm-lock.yaml'\n\nSpec sources — read in the repo:\n1. docs/design/spellpaw-phase1-implementation.md §1 (ModelProviderKey model: provider 'openai'|'anthropic', encryptedKey AES-256-GCM, keyPreview, isActive, lastChecked; Contact model: type AUDIENCE|CORRESPONDENT, profile_* PII vs persona_* no-PII, state_*; Interaction tables ContentTouch/Conversation/Event + contact_timeline VIEW).\n2. Same doc §2 (API routes: /api/settings/model-keys GET/POST, /api/contacts GET (?stage=engaged&limit=20), /api/contacts/:id GET (Persona+State, no PII), /api/contacts/insights/repeat-viewers GET, /api/mcp/* MCP SSE + messages embedded).\n3. Same doc §3 (MCP tools: 5 modules / 14 tools exactly as listed; contact.get returns Persona + State + recent Interaction, never profileName/Email/SocialHandle; write ops token-capped; publish-class ops need in-dialog approval unless trust toggle).\n4. Same doc §6 security (rate limit AI generate 10/min; key encryption AES-256-GCM for OAuth token + model key; PII leak row).\n5. ADR-0005 (BYOK, graceful degradation on key failure), ADR-0010 (MCP embedded, reuse same DB/auth).\n\nKnown intentional deviations already documented (verify documented, don't re-flag as new findings): (a) Contact/Interaction tables arrive in M3 schema-only (M4 writes data) — spec says Phase 1, no explicit milestone mapping, so M3/M4 split is a scheduling choice; (b) Interaction tables + VIEW deferred to M4; (c) api-tokens (workspace bearer tokens) added for MCP external clients — not in the spec route list, needed for spec §3 'external assistants connect' to work.\n\nBrief: Report (a) requirements the spec asked for that are missing or partial within M3 scope (quote the spec line); (b) behaviour in the diff that wasn't asked for (scope creep); (c) requirements that look implemented but where the implementation looks wrong (quote spec line + explain mismatch). Pay attention to: the exact 14-tool surface vs spec §3 table, PII contract enforcement (both routes and MCP), ModelProviderKey fields (isActive/lastChecked used or dead), rate limit keys/limits, MCP auth (session cookie path for /api/mcp and bearer), the schedule tools going through the real queue, and whether any contact endpoint can leak PII via include/select mistakes. Under 400 words.",
+  "exitCode": 0,
+  "usage": {
+    "input": 41616,
+    "output": 17578,
+    "cacheRead": 1042816,
+    "cacheWrite": 0,
+    "cost": 0.013667964800000003,
+    "turns": 29
+  },
+  "model": "deepseek/deepseek-v4-flash:high",
+  "attemptedModels": [
+    "deepseek/deepseek-v4-flash:high"
+  ],
+  "modelAttempts": [
+    {
+      "model": "deepseek/deepseek-v4-flash:high",
+      "success": true,
+      "exitCode": 0,
+      "usage": {
+        "input": 41616,
+        "output": 17578,
+        "cacheRead": 1042816,
+        "cacheWrite": 0,
+        "cost": 0.013667964800000003,
+        "turns": 29
+      }
+    }
+  ],
+  "durationMs": 227993,
+  "toolCount": 51,
+  "launchContractDigest": "163cdc451909ac4f4d7231ee7d890a70dd4543ba052c88994bd33bb2a5208022",
+  "launchResolvedExtensions": {
+    "version": 1,
+    "source": "launch-resolved",
+    "disableAmbientExtensions": false,
+    "runtime": [
+      "sha256:9af91292ea4e4f50"
+    ],
+    "configured": [],
+    "effective": [
+      "sha256:9af91292ea4e4f50"
+    ],
+    "omitted": {
+      "runtime": 0,
+      "configured": 0,
+      "effective": 0
+    }
+  },
+  "acceptance": {
+    "status": "attested",
+    "evidenceStatus": "attested",
+    "explicit": false,
+    "effectiveAcceptance": {
+      "level": "attested",
+      "explicit": false,
+      "inferredReason": [
+        "read-only/reviewer-style agent"
+      ],
+      "criteria": [
+        {
+          "id": "criterion-1",
+          "must": "Return concrete findings with file paths and severity when applicable",
+          "evidence": [
+            "review-findings",
+            "residual-risks"
+          ],
+          "severity": "required"
+        }
+      ],
+      "evidence": [
+        "review-findings",
+        "residual-risks"
+      ],
+      "verify": [],
+      "stopRules": []
+    },
+    "inferredReason": [
+      "read-only/reviewer-style agent"
+    ],
+    "criteria": [
+      {
+        "id": "criterion-1",
+        "must": "Return concrete findings with file paths and severity when applicable",
+        "evidence": [
+          "review-findings",
+          "residual-risks"
+        ],
+        "severity": "required"
+      }
+    ],
+    "runtimeChecks": [],
+    "verifyRuns": [],
+    "childReport": {
+      "criteriaSatisfied": [
+        {
+          "id": "criterion-1",
+          "status": "satisfied",
+          "evidence": "Concrete findings with file paths and severities returned: (1) contacts.ts:38 unvalidated stage -> 500 for spec's own ?stage=engaged example; (2) model-keys.ts:109 touchModelKeyCheck has zero callers -> isActive/lastChecked write-dead; (3) spec 3 publish-approval/trust toggle absent; (4) /api/settings/workspace (spec 2 route list) unimplemented. Correctness verified by test runs (105 tests passed, tsc clean) and a live request check."
+        }
+      ],
+      "changedFiles": [
+        "prisma/schema.prisma",
+        "prisma/migrations/20260803103202_m3_ai_provider_contacts/migration.sql",
+        "src/server/http.ts",
+        "src/server/mcp/server.ts",
+        "src/server/routes/mcp.ts",
+        "src/server/routes/contacts.ts",
+        "src/server/routes/settings.ts",
+        "src/server/routes/ai.ts",
+        "src/server/model-keys.ts",
+        "src/server/api-tokens.ts",
+        "src/lib/rate-limit.ts",
+        "src/lib/ai/providers.ts",
+        "src/app/(dashboard)/[workspaceId]/settings/SettingsClient.tsx",
+        "src/app/(dashboard)/[workspaceId]/content/Composer.tsx",
+        "src/components/DashboardNav.tsx"
+      ],
+      "testsAddedOrUpdated": [
+        "tests/integration/mcp.test.ts",
+        "tests/integration/settings.test.ts",
+        "src/lib/ai/providers.test.ts"
+      ],
+      "commandsRun": [
+        {
+          "command": "git diff 5ceb394 --cached --stat",
+          "result": "passed",
+          "summary": "27 files, +2457/-272"
+        },
+        {
+          "command": "npx vitest run",
+          "result": "passed",
+          "summary": "11 files, 105 tests passed; 1 non-fatal unhandled rejection from providers.test.ts timeout test"
+        },
+        {
+          "command": "npx tsc --noEmit",
+          "result": "passed",
+          "summary": "typecheck clean"
+        },
+        {
+          "command": "stage-check (tsx) against test DB",
+          "result": "passed",
+          "summary": "proved stage=engaged and stage=FOO return 500 on /api/contacts; ENGAGED returns 200"
+        }
+      ],
+      "validationOutput": [
+        "14-tool surface exact match to spec 3 table",
+        "PII contract holds: no profile_* in REST or MCP selects; test with seeded PII passes",
+        "AI rate limit 10/min per workspace key matches spec 6",
+        "MCP schedule tools route through the real BullMQ publisher (same schedulePost as REST)",
+        "Route parity maintained vs 5ceb394 http.ts",
+        "AES-256-GCM used for model keys and OAuth tokens"
+      ],
+      "residualRisks": [
+        "Lowercase/invalid ?stage on /api/contacts returns 500 (HTTP-API contract smell; MCP equivalent returns proper error)",
+        "isActive/lastChecked have no write path until key-checking is wired (ADR-0005 degradation is UI-only today)",
+        "MCP publish-approval/trust-toggle requirement from spec 3 has no owner milestone (PRD says M5)",
+        "/api/settings/workspace GET/PATCH (spec 2) lacks a milestone mapping",
+        "MCP session map is unbounded (no expiry except process restart/client DELETE); low risk",
+        "providers.test.ts leaves an unhandled rejection in the 30s-timeout test"
+      ],
+      "noStagedFiles": false,
+      "diffSummary": "M3 staged: BYOK ModelProviderKey + AES-256-GCM storage, settings UI (keys + api-tokens), /api/ai/generate with 10/min per-workspace rate limit, embedded MCP server (14 tools, 5 modules) with bearer/session auth and daily write cap, schema-only Contact tables, and a behavior-preserving split of http.ts into route modules.",
+      "reviewFindings": [
+        "minor: src/server/routes/contacts.ts:38 - stage param unvalidated; spec example ?stage=engaged returns 500 instead of 400/empty",
+        "minor: src/server/model-keys.ts:109 - touchModelKeyCheck never called; isActive/lastChecked (spec 1) are write-dead, spec 8 degradation state never persisted",
+        "note: spec 3 publish-class in-dialog approval / trust toggle not implemented (PRD maps to M5; not in documented deviations)",
+        "note: /api/settings/workspace GET/PATCH from spec 2 route list not implemented, no milestone mapping",
+        "note: MCP write cap default 100/day is arbitrary and undocumented",
+        "note: providers.test.ts timeout test emits an unhandled rejection (vitest reports 1 error)"
+      ],
+      "manualNotes": "No blockers. Both findings are spec-conformance gaps, not data-integrity/security issues. The 500-on-invalid-stage is a one-line fix (zod enum). Consider wiring touchModelKeyCheck into the MODEL_KEY_INVALID path in a follow-up."
+    }
+  },
+  "effects": {
+    "fileMutation": {
+      "status": "not-applicable",
+      "expected": false,
+      "attempted": true
+    }
+  },
+  "transcriptPath": "/Users/nicholasl/Documents/build-whatever/SpellPaw/.pi-subagents/artifacts/4d0d537c_reviewer_1_transcript.jsonl",
+  "timestamp": 1785754592851
+}

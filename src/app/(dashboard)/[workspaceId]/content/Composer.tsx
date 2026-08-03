@@ -29,6 +29,22 @@ export function Composer({ workspaceId, channels }: Props) {
   const [scheduledAt, setScheduledAt] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  const aiMutation = useMutation({
+    mutationFn: async ({ channelSlug }: { channelSlug: string }) => {
+      // Rewrite the global source into a channel-appropriate variant (BYOK).
+      const { content } = await api.send<{ content: string }>("/api/ai/generate", "POST", {
+        text: globalDraft,
+        channelSlug,
+      });
+      setVariant(channelSlug, content);
+      setAiError(null);
+    },
+    onError: (err) => {
+      setAiError(err instanceof Error ? err.message : String(err));
+    },
+  });
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["calendar"] });
@@ -94,13 +110,32 @@ export function Composer({ workspaceId, channels }: Props) {
 
       <div className="px-5 py-4">
         {/* Global source */}
-        <textarea
-          value={globalDraft}
-          onChange={(e) => setGlobalDraft(e.target.value)}
-          rows={3}
-          placeholder="Write your post… AI drafting arrives in a later milestone."
-          className="w-full resize-none rounded-lg border border-zinc-200 p-3 text-sm focus:border-zinc-400 focus:outline-none"
-        />
+        <div className="relative">
+          <textarea
+            value={globalDraft}
+            onChange={(e) => setGlobalDraft(e.target.value)}
+            rows={3}
+            placeholder="Write your post…"
+            className="w-full resize-none rounded-lg border border-zinc-200 p-3 text-sm focus:border-zinc-400 focus:outline-none"
+          />
+          {activeChannel && (
+            <button
+              onClick={() => aiMutation.mutate({ channelSlug: activeChannel.slug })}
+              disabled={aiMutation.isPending || globalDraft.trim().length === 0}
+              className="absolute bottom-2 right-2 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium shadow-sm hover:bg-zinc-50 disabled:opacity-40"
+              title={`Rewrite the draft as a ${activeChannel.name} post using your model key`}
+            >
+              {aiMutation.isPending ? "✨ Rewriting…" : "✨ AI rewrite"}
+            </button>
+          )}
+          {aiError && (
+            <p className="mt-1 text-xs text-amber-700">
+              {aiError === "MODEL_KEY_MISSING"
+                ? "No model key configured — add one in Settings to use AI."
+                : `AI rewrite failed: ${aiError}`}
+            </p>
+          )}
+        </div>
 
         {/* Channel tabs */}
         <div className="mt-4 flex gap-2 border-b border-zinc-100">

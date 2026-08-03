@@ -32,6 +32,9 @@ model Workspace {
   createdAt        DateTime         @default(now())
   posts            Post[]
   oauthConnections OAuthConnection[]
+  modelProviderKeys ModelProviderKey[]
+  apiTokens        ApiToken[]
+  contacts         Contact[]
 
   @@index([accountId])
 }
@@ -136,4 +139,87 @@ model PostVariant {
   channel Channel @relation(fields: [channelId], references: [id])
 
   @@unique([postId, channelId])
+}
+
+// --- M3: AI Provider (BYOK, ADR-0005) ---
+
+model ModelProviderKey {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  provider     String // "openai" | "anthropic"
+  // AES-256-GCM encrypted at rest (ENCRYPTION_KEY). See src/lib/crypto.ts.
+  encryptedKey String
+  keyPreview   String // "sk-...a1b2"
+  isActive     Boolean   @default(true)
+  lastChecked  DateTime?
+  createdAt    DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@index([workspaceId, isActive])
+}
+
+// Workspace-scoped bearer tokens for external MCP/AI clients (Claude Desktop etc.).
+// Only the SHA-256 hash is stored; the plaintext token is shown once at mint time.
+model ApiToken {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  tokenHash   String    @unique
+  // "sp_" + 32 random base58 chars — shown once at creation.
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@index([workspaceId, revokedAt])
+}
+
+// --- M3: Customer Graph (schema-only until M4 writes data) ---
+
+enum ContactType {
+  AUDIENCE
+  CORRESPONDENT
+}
+
+enum LifecycleStage {
+  AWARE
+  ENGAGED
+  ACTIVATED
+  LOYAL
+  AT_RISK
+  CHURNED
+}
+
+model Contact {
+  id          String      @id @default(cuid())
+  workspaceId String
+  // Event-triggered: AUDIENCE -> CORRESPONDENT on first Conversation (Phase 2).
+  type        ContactType @default(AUDIENCE)
+
+  // Profile (PII, user-editable) — MCP contact tools must NEVER select these.
+  profileName          String?
+  profileEmail         String?
+  profileSocialHandle  String?
+  profileSourceChannel String?
+  profileTags          String[]
+
+  // Persona (AI-derived, no PII, 365-day window) — populated by M4 derivation.
+  personaContentDNA    Json?
+  personaSentimentArc  Json?
+  personaIntentVector  Float[] // pgvector
+
+  // State (real-time, rules-driven) — recomputed on Interaction events.
+  stateLifecycleStage   LifecycleStage @default(AWARE)
+  stateRiskScore        Int?
+  stateOpportunityScore Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@index([workspaceId, stateLifecycleStage])
+  @@index([workspaceId, updatedAt])
 }

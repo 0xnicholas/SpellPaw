@@ -1,40 +1,29 @@
 // Embedded Hono API (ADR-0010 style: same process, /api/* catch-all route).
-// Auth is injected via getAccountId so the app is unit/integration-testable.
+// Route modules live in src/server/routes/*; this file owns auth, workspace
+// scoping, and the error handler. Auth is injected via getAccountId so the app
+// is unit/integration-testable.
 import { Hono, type Context } from "hono";
-import { getCookie, setCookie } from "hono/cookie";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-import { z, type ZodType } from "zod";
 import type { PrismaClient } from "@/generated/prisma/client";
 import type { ChannelAdapter } from "@/adapters/channels/types";
 import { getAdapter } from "@/adapters/channels/registry";
 import { getEncryptionKey } from "@/lib/crypto";
+import type { RateLimiter } from "@/lib/rate-limit";
+import type { GenerateOptions } from "@/lib/ai/providers";
 import { ApiError } from "./errors";
 import { ensureWorkspace } from "./workspaces";
 import type { Publisher } from "./publisher";
-import { DAY_MS, startOfDayUtc } from "@/lib/time";
-import {
-  cancelSchedule,
-  createPost,
-  getCalendarEvents,
-  listPosts,
-  publishPost,
-  schedulePost,
-  updateVariant,
-} from "./posts";
-import {
-  completeConnect,
-  disconnectChannel,
-  listChannelsWithStatus,
-  startConnect,
-  workspaceIdFromState,
-} from "./channels";
-
-type Env = {
-  Variables: {
-    accountId: string;
-    workspaceId: string;
-  };
-};
+import { resolveApiToken } from "./api-tokens";
+import type { AppEnv, RouteDeps } from "./routes/shared";
+import { postsRoutes } from "./routes/posts";
+import { variantsRoutes } from "./routes/variants";
+import { scheduleRoutes } from "./routes/schedule";
+import { calendarRoutes } from "./routes/calendar";
+import { channelsRoutes } from "./routes/channels";
+import { settingsRoutes } from "./routes/settings";
+import { aiRoutes } from "./routes/ai";
+import { contactsRoutes } from "./routes/contacts";
+import { mcpRoutes } from "./routes/mcp";
 
 export interface ApiDeps {
   prisma: PrismaClient;
@@ -45,78 +34,61 @@ export interface ApiDeps {
   /** Resolves the authenticated account id from the request (NextAuth JWT). */
   getAccountId: (c: Context) => Promise<string | null>;
   encryptionKey?: Buffer;
+  /** Redis-backed rate limiter; omitted → no rate limiting (dev/tests). */
+  rateLimiter?: RateLimiter;
+  /** Injectable for tests; defaults to the real BYOK provider call. */
+  aiGenerate?: (opts: GenerateOptions) => Promise<string>;
 }
 
-const postCreateSchema = z.object({
-  title: z.string().trim().max(200).optional().nullable(),
-  variants: z
-    .array(z.object({ channelSlug: z.string().min(1), content: z.string() }))
-    .min(1),
-});
-
-const variantUpdateSchema = z.object({ content: z.string() });
-
-const scheduleSchema = z.object({ scheduledAt: z.string().min(1) });
-
-async function readJson<T>(c: Context, schema: ZodType<T>): Promise<T> {
-  let raw: unknown;
-  try {
-    raw = await c.req.json();
-  } catch {
-    throw new ApiError(400, "invalid JSON body");
-  }
-  const parsed = schema.safeParse(raw);
-  if (!parsed.success) {
-    throw new ApiError(400, parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
-  }
-  return parsed.data;
-}
-
-function parseDateParam(value: string | undefined, label: string): Date | null {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    throw new ApiError(400, `${label} must be a valid ISO date`);
-  }
-  return date;
-}
-
-const oauthStateCookie = (slug: string) => `sp_oauth_state_${slug}`;
-const oauthVerifierCookie = (slug: string) => `sp_oauth_verifier_${slug}`;
-
-export function createApiApp(deps: ApiDeps): Hono<Env> {
-  const app = new Hono<Env>();
-  const adapters = deps.adapters ?? {
-    twitter: getAdapter("twitter"),
-    linkedin: getAdapter("linkedin"),
-    instagram: getAdapter("instagram"),
+export function createApiApp(deps: ApiDeps): Hono<AppEnv> {
+  const app = new Hono<AppEnv>();
+  const routeDeps: RouteDeps = {
+    prisma: deps.prisma,
+    publisher: deps.publisher,
+    adapters: deps.adapters ?? {
+      twitter: getAdapter("twitter"),
+      linkedin: getAdapter("linkedin"),
+      instagram: getAdapter("instagram"),
+    },
+    encryptionKey: deps.encryptionKey ?? getEncryptionKey(),
+    rateLimiter: deps.rateLimiter,
+    aiGenerate: deps.aiGenerate,
   };
-  const encryptionKey = deps.encryptionKey ?? getEncryptionKey();
 
-  /** Live queue state per variant (null when terminal/none) — for the UI. */
-  async function enrichQueueStates(posts: Array<{ variants: Array<{ id: string }> }>) {
-    await Promise.all(
-      posts.flatMap((post) =>
-        post.variants.map(async (variant) => {
-          (variant as { queueState?: unknown }).queueState =
-            await deps.publisher.getVariantQueueState(variant.id);
-        }),
-      ),
-    );
-  }
+  // MCP bearer auth: workspace tokens bypass the session flow. The MCP handler
+  // still runs — this middleware only annotates the context. Bearer-first:
+  // an invalid bearer 401s even if a valid session cookie exists (simpler and
+  // safer than merging two identities).
+  app.use("/api/mcp", async (c, next) => {
+    const bearer = c.req.header("authorization");
+    if (bearer?.startsWith("Bearer ")) {
+      const resolved = await resolveApiToken(deps.prisma, bearer.slice(7).trim());
+      if (!resolved) {
+        return c.json({ error: "unauthorized" }, 401);
+      }
+      c.set("accountId", `token:${resolved.workspaceId}`);
+      c.set("workspaceId", resolved.workspaceId);
+      c.set("mcpViaToken", true);
+    }
+    await next();
+  });
 
   app.use("*", async (c, next) => {
-    const accountId = await deps.getAccountId(c);
-    if (!accountId) {
-      return c.json({ error: "unauthorized" }, 401);
+    if (!c.get("mcpViaToken")) {
+      const accountId = await deps.getAccountId(c);
+      if (!accountId) {
+        return c.json({ error: "unauthorized" }, 401);
+      }
+      c.set("accountId", accountId);
     }
-    c.set("accountId", accountId);
     await next();
   });
 
   // Workspace scoping: explicit x-workspace-id header wins; otherwise the
   // account's default workspace is used (bootstrap on first login).
+  // MCP bearer requests already carry their workspace (from the token).
   app.use("*", async (c, next) => {
+    if (c.get("mcpViaToken")) return next();
     const accountId = c.get("accountId");
     const requested = c.req.header("x-workspace-id");
     if (requested) {
@@ -134,179 +106,16 @@ export function createApiApp(deps: ApiDeps): Hono<Env> {
     await next();
   });
 
-  // --- Posts ---
-  app.get("/api/posts", async (c) => {
-    const posts = await listPosts(deps.prisma, c.get("workspaceId"));
-    await enrichQueueStates(posts);
-    return c.json({ posts });
-  });
-
-  app.post("/api/posts", async (c) => {
-    const body = await readJson(c, postCreateSchema);
-    const post = await createPost(deps.prisma, {
-      workspaceId: c.get("workspaceId"),
-      title: body.title ?? null,
-      variants: body.variants,
-    });
-    return c.json({ post }, 201);
-  });
-
-  app.get("/api/posts/:id", async (c) => {
-    const post = await deps.prisma.post.findFirst({
-      where: { id: c.req.param("id"), workspaceId: c.get("workspaceId") },
-      include: { variants: { include: { channel: true }, orderBy: { id: "asc" as const } } },
-    });
-    if (!post) throw new ApiError(404, "post not found");
-    await enrichQueueStates([post]);
-    return c.json({ post });
-  });
-
-  app.post("/api/posts/:id/publish", async (c) => {
-    const result = await publishPost(deps.prisma, deps.publisher, c.get("workspaceId"), c.req.param("id"));
-    // 202 Accepted — the queue performs the publish asynchronously.
-    return c.json(result, 202);
-  });
-
-  app.delete("/api/posts/:id", async (c) => {
-    const workspaceId = c.get("workspaceId");
-    const post = await deps.prisma.post.findFirst({ where: { id: c.req.param("id"), workspaceId } });
-    if (!post) throw new ApiError(404, "post not found");
-    await deps.prisma.post.delete({ where: { id: post.id } });
-    return c.json({ deleted: true });
-  });
-
-  // --- Variants ---
-  app.patch("/api/variants/:id", async (c) => {
-    const body = await readJson(c, variantUpdateSchema);
-    const variant = await updateVariant(deps.prisma, c.get("workspaceId"), c.req.param("id"), body.content);
-    return c.json({ variant });
-  });
-
-  // --- Schedule ---
-  app.post("/api/schedule/:postId", async (c) => {
-    const body = await readJson(c, scheduleSchema);
-    const scheduledAt = parseDateParam(body.scheduledAt, "scheduledAt");
-    if (!scheduledAt) throw new ApiError(400, "scheduledAt is required");
-    const post = await schedulePost(
-      deps.prisma,
-      deps.publisher,
-      c.get("workspaceId"),
-      c.req.param("postId"),
-      scheduledAt,
-    );
-    return c.json({ post });
-  });
-
-  // Reschedule (spec §2: PATCH /api/schedule/:pid)
-  app.patch("/api/schedule/:postId", async (c) => {
-    const body = await readJson(c, scheduleSchema);
-    const scheduledAt = parseDateParam(body.scheduledAt, "scheduledAt");
-    if (!scheduledAt) throw new ApiError(400, "scheduledAt is required");
-    const post = await schedulePost(
-      deps.prisma,
-      deps.publisher,
-      c.get("workspaceId"),
-      c.req.param("postId"),
-      scheduledAt,
-    );
-    return c.json({ post });
-  });
-
-  app.delete("/api/schedule/:postId", async (c) => {
-    const post = await cancelSchedule(deps.prisma, deps.publisher, c.get("workspaceId"), c.req.param("postId"));
-    return c.json({ post });
-  });
-
-  // --- Calendar ---
-  app.get("/api/calendar", async (c) => {
-    const start = parseDateParam(c.req.query("start"), "start") ?? startOfDayUtc(new Date());
-    const days = clampDays(Number(c.req.query("days")) || 7);
-    const end = new Date(start.getTime() + days * DAY_MS);
-    // spec §2: ?view=week (only view implemented in M1) + optional channel filter
-    const view = c.req.query("view") ?? "week";
-    if (view !== "week" && view !== "month") {
-      throw new ApiError(400, "view must be 'week' or 'month'");
-    }
-    const channels = c.req.query("channels")?.split(",").filter(Boolean);
-    const posts = await getCalendarEvents(deps.prisma, c.get("workspaceId"), start, end, channels);
-    await enrichQueueStates(posts);
-    return c.json({ start: start.toISOString(), days, view, posts });
-  });
-
-  // --- Channels ---
-  app.get("/api/channels", async (c) => {
-    const channels = await listChannelsWithStatus(deps.prisma, c.get("workspaceId"));
-    return c.json({ channels });
-  });
-
-  app.post("/api/channels/:slug/connect", async (c) => {
-    const slug = c.req.param("slug");
-    const adapter = adapters[slug];
-    if (!adapter) throw new ApiError(404, `unknown channel "${slug}"`);
-    const origin = new URL(c.req.url).origin;
-    const redirectUri = `${origin}/api/channels/${slug}/callback`;
-    const pending = startConnect(adapter, redirectUri, c.get("workspaceId"));
-    setCookie(c, oauthStateCookie(slug), pending.state, {
-      httpOnly: true,
-      sameSite: "Lax",
-      path: `/api/channels/${slug}`,
-      maxAge: 600,
-    });
-    setCookie(c, oauthVerifierCookie(slug), pending.verifier, {
-      httpOnly: true,
-      sameSite: "Lax",
-      path: `/api/channels/${slug}`,
-      maxAge: 600,
-    });
-    return c.json({ url: pending.authUrl });
-  });
-
-  app.get("/api/channels/:slug/callback", async (c) => {
-    const slug = c.req.param("slug");
-    const adapter = adapters[slug];
-    if (!adapter) throw new ApiError(404, `unknown channel "${slug}"`);
-
-    const code = c.req.query("code");
-    const state = c.req.query("state");
-    const expectedState = getCookie(c, oauthStateCookie(slug));
-    const verifier = getCookie(c, oauthVerifierCookie(slug));
-    const accountId = c.get("accountId");
-
-    // The state embeds the initiating workspace; resolve it for THIS account so
-    // the connection lands in the right workspace even for non-default ones.
-    const stateWorkspaceId = state ? workspaceIdFromState(state) : null;
-    const workspace = stateWorkspaceId
-      ? await deps.prisma.workspace.findFirst({ where: { id: stateWorkspaceId, accountId } })
-      : null;
-
-    const origin = new URL(c.req.url).origin;
-    const redirectUri = `${origin}/api/channels/${slug}/callback`;
-    const failUrl = `/${workspace?.id ?? ""}/channels?error=connect_failed`;
-
-    if (!code || !state || !expectedState || !verifier || !workspace) {
-      return c.redirect(`${failUrl}&reason=missing_params`);
-    }
-    try {
-      await completeConnect(deps.prisma, adapter, {
-        workspaceId: workspace.id,
-        channelSlug: slug,
-        code,
-        state,
-        expectedState,
-        verifier,
-        redirectUri,
-        encryptionKey,
-      });
-      return c.redirect(`/${workspace.id}/channels?connected=${slug}`);
-    } catch {
-      return c.redirect(`${failUrl}&reason=exchange_failed`);
-    }
-  });
-
-  app.delete("/api/channels/:slug", async (c) => {
-    const result = await disconnectChannel(deps.prisma, c.get("workspaceId"), c.req.param("slug"));
-    return c.json(result);
-  });
+  // --- Route modules (spec §2) ---
+  app.route("/api/posts", postsRoutes(routeDeps));
+  app.route("/api/variants", variantsRoutes(routeDeps));
+  app.route("/api/schedule", scheduleRoutes(routeDeps));
+  app.route("/api/calendar", calendarRoutes(routeDeps));
+  app.route("/api/channels", channelsRoutes(routeDeps));
+  app.route("/api/settings", settingsRoutes(routeDeps));
+  app.route("/api/ai", aiRoutes(routeDeps));
+  app.route("/api/contacts", contactsRoutes(routeDeps));
+  app.route("/api/mcp", mcpRoutes(routeDeps));
 
   app.onError((err, c) => {
     if (err instanceof ApiError) {
@@ -317,9 +126,4 @@ export function createApiApp(deps: ApiDeps): Hono<Env> {
   });
 
   return app;
-}
-
-function clampDays(days: number): number {
-  if (Number.isNaN(days)) return 7;
-  return Math.min(31, Math.max(1, Math.floor(days)));
 }

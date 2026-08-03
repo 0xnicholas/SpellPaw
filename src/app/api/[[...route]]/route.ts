@@ -3,8 +3,11 @@ import { getToken } from "next-auth/jwt";
 import { createApiApp } from "@/server/http";
 import { prisma } from "@/lib/db";
 import { createPublisher } from "@/server/queue";
+import { createRateLimiter } from "@/lib/rate-limit";
 import { getAdapter } from "@/adapters/channels/registry";
 import { getEncryptionKey } from "@/lib/crypto";
+
+const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
 
 const app = createApiApp({
   prisma,
@@ -16,8 +19,10 @@ const app = createApiApp({
       instagram: getAdapter("instagram"),
     },
     encryptionKey: getEncryptionKey(),
-    redisUrl: process.env.REDIS_URL ?? "redis://localhost:6379",
+    redisUrl,
   }),
+  // spec §6: Redis-backed rate limiting (AI generate 10/min, MCP write caps).
+  rateLimiter: createRateLimiter(redisUrl),
   getAccountId: async (c) => {
     // getToken only reads the cookie header — pass headers directly (no
     // NextRequest wrapping; Hono hands us a plain Request here).

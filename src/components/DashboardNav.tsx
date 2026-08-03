@@ -24,6 +24,12 @@ export function DashboardNav({ workspace }: { workspace: { id: string; name: str
             >
               Channels
             </Link>
+            <Link
+              href={`/${workspace.id}/settings`}
+              className="font-medium text-zinc-500 hover:text-zinc-900"
+            >
+              Settings
+            </Link>
           </nav>
         </div>
         <form
