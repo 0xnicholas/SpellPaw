@@ -1,6 +1,6 @@
 # SpellPaw
 
-SpellPaw 是面向 SMB 和 AI-native builders 的外部沟通 AI 操作系统，将内容营销、客户服务和客户生命周期管理统一到一个平台上。
+SpellPaw 的核心价值是**客户生命周期智能**：把用户的 Audience 变成可追踪、可分析、可跟进的资产。Content 发布与 Inbox 对话是产生数据（Content Touch / Conversation）的入口，Customer Graph 与 AI 洞察（Persona/State）是产品卖点。主目标用户是 **AI-native builders**（个人开发者/独立创始人，让 Agent 通过 MCP/API 消费与操作 SpellPaw），微型 SMB（创始人兼营销，用手点 UI）为次要用户。
 
 ## Language
 
