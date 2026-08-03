@@ -11,16 +11,11 @@ import {
 } from "@/domain/post";
 import { ApiError } from "./errors";
 import { decryptString } from "@/lib/crypto";
+import type { Publisher } from "./publisher";
 
 export interface VariantInput {
   channelSlug: string;
   content: string;
-}
-
-export interface PublishSummary {
-  published: number;
-  failed: number;
-  skipped: number;
 }
 
 const POST_INCLUDE = {
@@ -96,6 +91,7 @@ export async function updateVariant(
 
 export async function schedulePost(
   prisma: PrismaClient,
+  publisher: Publisher,
   workspaceId: string,
   postId: string,
   scheduledAt: Date,
@@ -109,15 +105,18 @@ export async function schedulePost(
   if (post.status === "PUBLISHED") {
     throw new ApiError(400, "cannot schedule a published post");
   }
-  return prisma.post.update({
+  const updated = await prisma.post.update({
     where: { id: postId },
     data: { scheduledAt, status: "SCHEDULED" },
     include: POST_INCLUDE,
   });
+  await publisher.schedule(postId, workspaceId, scheduledAt);
+  return updated;
 }
 
 export async function cancelSchedule(
   prisma: PrismaClient,
+  publisher: Publisher,
   workspaceId: string,
   postId: string,
 ) {
@@ -126,24 +125,116 @@ export async function cancelSchedule(
   if (post.status === "PUBLISHED") {
     throw new ApiError(400, "cannot cancel schedule of a published post");
   }
-  return prisma.post.update({
+  const updated = await prisma.post.update({
     where: { id: postId },
     data: { scheduledAt: null, status: derivePostStatus({ scheduledAt: null, publishedAt: null }) },
+    include: POST_INCLUDE,
+  });
+  await publisher.cancelSchedule(postId, workspaceId);
+  return updated;
+}
+
+// --- Queue-era publish path (M2) -------------------------------------------
+
+/** Permanent failures (validation, missing connection) must not be retried. */
+export class PermanentPublishError extends Error {}
+
+/**
+ * Core publish step — shared by the BullMQ worker and the sync test fake.
+ * Marks the variant in the DB itself; callers settle the post afterwards.
+ *
+ * Failure classification:
+ * - permanent (validation / no connection / no adapter): marks FAILED and
+ *   throws PermanentPublishError so queue workers skip retries;
+ * - transient (platform API error): returns "failed" without touching the DB —
+ *   the queue layer decides retry vs. final FAILED.
+ */
+export async function publishVariantToChannel(
+  prisma: PrismaClient,
+  adapters: Record<string, ChannelAdapter>,
+  encryptionKey: Buffer,
+  variant: {
+    id: string;
+    content: string;
+    channel: { slug: string };
+    channelId: string;
+  },
+  workspaceId: string,
+): Promise<{ state: "published" } | { state: "failed"; message: string }> {
+  const validation = validateVariantContent(variant.channel.slug, variant.content);
+  if (!validation.ok) {
+    await prisma.postVariant.update({
+      where: { id: variant.id },
+      data: markVariantFailed(validation.reason),
+    });
+    throw new PermanentPublishError(validation.reason);
+  }
+
+  const connection = await prisma.oAuthConnection.findUnique({
+    where: { workspaceId_channelId: { workspaceId, channelId: variant.channelId } },
+  });
+  if (!connection) {
+    const message = "channel not connected";
+    await prisma.postVariant.update({
+      where: { id: variant.id },
+      data: markVariantFailed(message),
+    });
+    throw new PermanentPublishError(message);
+  }
+
+  const adapter = adapters[variant.channel.slug];
+  if (!adapter) {
+    const message = `no adapter for channel "${variant.channel.slug}"`;
+    await prisma.postVariant.update({
+      where: { id: variant.id },
+      data: markVariantFailed(message),
+    });
+    throw new PermanentPublishError(message);
+  }
+
+  try {
+    const accessToken = decryptString(connection.accessToken, encryptionKey);
+    await adapter.publish(variant.content, { accessToken });
+    await prisma.postVariant.update({
+      where: { id: variant.id },
+      data: markVariantPublished(new Date()),
+    });
+    return { state: "published" };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { state: "failed", message };
+  }
+}
+
+/**
+ * Recompute the post-level status after variant state changes: any published
+ * variant → PUBLISHED (publishedAt stamped once); none → unchanged.
+ */
+export async function settlePost(prisma: PrismaClient, postId: string, now: Date = new Date()) {
+  const post = await prisma.post.findUnique({
+    where: { id: postId },
+    include: { variants: { select: { publishState: true } } },
+  });
+  if (!post) return null;
+  const anyPublished = post.variants.some((v) => v.publishState === "PUBLISHED");
+  if (!anyPublished) return post;
+  return prisma.post.update({
+    where: { id: postId },
+    data: { status: "PUBLISHED", publishedAt: post.publishedAt ?? now },
     include: POST_INCLUDE,
   });
 }
 
 /**
- * Publish all ready variants of a post through their channel adapters.
- * One channel failing never blocks the others (spec §5).
+ * Queue-based publish: validate locally, mark invalid variants FAILED, and
+ * hand the rest to the publisher (BullMQ in prod, sync fake in tests).
  */
 export async function publishPost(
   prisma: PrismaClient,
-  adapters: Record<string, ChannelAdapter>,
-  encryptionKey: Buffer,
+  publisher: Publisher,
   workspaceId: string,
   postId: string,
-): Promise<{ post: Awaited<ReturnType<typeof prisma.post.findFirst>>; summary: PublishSummary }> {
+): Promise<{ queued: number; postId: string }> {
   const post = await prisma.post.findFirst({
     where: { id: postId, workspaceId },
     include: POST_INCLUDE,
@@ -153,75 +244,22 @@ export async function publishPost(
     throw new ApiError(400, "post is already published");
   }
 
-  const summary: PublishSummary = { published: 0, failed: 0, skipped: 0 };
-  const now = new Date();
-
+  const ready: string[] = [];
   for (const variant of post.variants) {
-    if (variant.publishState === "PUBLISHED") {
-      summary.skipped += 1;
-      continue;
-    }
-
+    if (variant.publishState === "PUBLISHED") continue;
     const validation = validateVariantContent(variant.channel.slug, variant.content);
     if (!validation.ok) {
       await prisma.postVariant.update({
         where: { id: variant.id },
         data: markVariantFailed(validation.reason),
       });
-      summary.failed += 1;
       continue;
     }
-
-    const connection = await prisma.oAuthConnection.findUnique({
-      where: { workspaceId_channelId: { workspaceId, channelId: variant.channelId } },
-    });
-    if (!connection) {
-      await prisma.postVariant.update({
-        where: { id: variant.id },
-        data: markVariantFailed("channel not connected"),
-      });
-      summary.failed += 1;
-      continue;
-    }
-
-    const adapter = adapters[variant.channel.slug];
-    if (!adapter) {
-      await prisma.postVariant.update({
-        where: { id: variant.id },
-        data: markVariantFailed(`no adapter for channel "${variant.channel.slug}"`),
-      });
-      summary.failed += 1;
-      continue;
-    }
-
-    try {
-      const accessToken = decryptString(connection.accessToken, encryptionKey);
-      await adapter.publish(variant.content, { accessToken });
-      await prisma.postVariant.update({
-        where: { id: variant.id },
-        data: markVariantPublished(now),
-      });
-      summary.published += 1;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      await prisma.postVariant.update({
-        where: { id: variant.id },
-        data: markVariantFailed(message),
-      });
-      summary.failed += 1;
-    }
+    ready.push(variant.id);
   }
 
-  const hadPublishedVariant =
-    summary.published > 0 ||
-    post.variants.some((v) => v.publishState === "PUBLISHED");
-  const updated = await prisma.post.update({
-    where: { id: postId },
-    data: hadPublishedVariant ? { publishedAt: now, status: "PUBLISHED" } : {},
-    include: POST_INCLUDE,
-  });
-
-  return { post: updated, summary };
+  const { queued } = await publisher.enqueuePublish(postId, workspaceId, ready);
+  return { queued, postId };
 }
 
 export async function listPosts(prisma: PrismaClient, workspaceId: string) {

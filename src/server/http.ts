@@ -10,6 +10,7 @@ import { getAdapter } from "@/adapters/channels/registry";
 import { getEncryptionKey } from "@/lib/crypto";
 import { ApiError } from "./errors";
 import { ensureWorkspace } from "./workspaces";
+import type { Publisher } from "./publisher";
 import { DAY_MS, startOfDayUtc } from "@/lib/time";
 import {
   cancelSchedule,
@@ -37,6 +38,8 @@ type Env = {
 
 export interface ApiDeps {
   prisma: PrismaClient;
+  /** Queue/worker abstraction (BullMQ in prod, sync fake in tests). */
+  publisher: Publisher;
   /** Injected adapter map (tests); defaults to the env-driven registry. */
   adapters?: Record<string, ChannelAdapter>;
   /** Resolves the authenticated account id from the request (NextAuth JWT). */
@@ -90,6 +93,18 @@ export function createApiApp(deps: ApiDeps): Hono<Env> {
   };
   const encryptionKey = deps.encryptionKey ?? getEncryptionKey();
 
+  /** Live queue state per variant (null when terminal/none) — for the UI. */
+  async function enrichQueueStates(posts: Array<{ variants: Array<{ id: string }> }>) {
+    await Promise.all(
+      posts.flatMap((post) =>
+        post.variants.map(async (variant) => {
+          (variant as { queueState?: unknown }).queueState =
+            await deps.publisher.getVariantQueueState(variant.id);
+        }),
+      ),
+    );
+  }
+
   app.use("*", async (c, next) => {
     const accountId = await deps.getAccountId(c);
     if (!accountId) {
@@ -122,6 +137,7 @@ export function createApiApp(deps: ApiDeps): Hono<Env> {
   // --- Posts ---
   app.get("/api/posts", async (c) => {
     const posts = await listPosts(deps.prisma, c.get("workspaceId"));
+    await enrichQueueStates(posts);
     return c.json({ posts });
   });
 
@@ -141,18 +157,14 @@ export function createApiApp(deps: ApiDeps): Hono<Env> {
       include: { variants: { include: { channel: true }, orderBy: { id: "asc" as const } } },
     });
     if (!post) throw new ApiError(404, "post not found");
+    await enrichQueueStates([post]);
     return c.json({ post });
   });
 
   app.post("/api/posts/:id/publish", async (c) => {
-    const result = await publishPost(
-      deps.prisma,
-      adapters,
-      encryptionKey,
-      c.get("workspaceId"),
-      c.req.param("id"),
-    );
-    return c.json(result);
+    const result = await publishPost(deps.prisma, deps.publisher, c.get("workspaceId"), c.req.param("id"));
+    // 202 Accepted — the queue performs the publish asynchronously.
+    return c.json(result, 202);
   });
 
   app.delete("/api/posts/:id", async (c) => {
@@ -175,7 +187,13 @@ export function createApiApp(deps: ApiDeps): Hono<Env> {
     const body = await readJson(c, scheduleSchema);
     const scheduledAt = parseDateParam(body.scheduledAt, "scheduledAt");
     if (!scheduledAt) throw new ApiError(400, "scheduledAt is required");
-    const post = await schedulePost(deps.prisma, c.get("workspaceId"), c.req.param("postId"), scheduledAt);
+    const post = await schedulePost(
+      deps.prisma,
+      deps.publisher,
+      c.get("workspaceId"),
+      c.req.param("postId"),
+      scheduledAt,
+    );
     return c.json({ post });
   });
 
@@ -184,12 +202,18 @@ export function createApiApp(deps: ApiDeps): Hono<Env> {
     const body = await readJson(c, scheduleSchema);
     const scheduledAt = parseDateParam(body.scheduledAt, "scheduledAt");
     if (!scheduledAt) throw new ApiError(400, "scheduledAt is required");
-    const post = await schedulePost(deps.prisma, c.get("workspaceId"), c.req.param("postId"), scheduledAt);
+    const post = await schedulePost(
+      deps.prisma,
+      deps.publisher,
+      c.get("workspaceId"),
+      c.req.param("postId"),
+      scheduledAt,
+    );
     return c.json({ post });
   });
 
   app.delete("/api/schedule/:postId", async (c) => {
-    const post = await cancelSchedule(deps.prisma, c.get("workspaceId"), c.req.param("postId"));
+    const post = await cancelSchedule(deps.prisma, deps.publisher, c.get("workspaceId"), c.req.param("postId"));
     return c.json({ post });
   });
 
@@ -205,6 +229,7 @@ export function createApiApp(deps: ApiDeps): Hono<Env> {
     }
     const channels = c.req.query("channels")?.split(",").filter(Boolean);
     const posts = await getCalendarEvents(deps.prisma, c.get("workspaceId"), start, end, channels);
+    await enrichQueueStates(posts);
     return c.json({ start: start.toISOString(), days, view, posts });
   });
 

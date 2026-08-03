@@ -1,0 +1,179 @@
+{
+  "runId": "1ff6c147",
+  "agent": "reviewer",
+  "task": "[Read from: /Users/nicholasl/Documents/build-whatever/SpellPaw/plan.md, /Users/nicholasl/Documents/build-whatever/SpellPaw/progress.md]\n\nYou are the SPEC axis of a code review for the SpellPaw M2 milestone (BullMQ queue + scheduling) — staged changes on top of commit 60f3eba.\n\nFixed point: commit 60f3eba. Diff command (run from /Users/nicholasl/Documents/build-whatever/SpellPaw):\n  git diff 60f3eba --cached -- . ':(exclude)pnpm-lock.yaml'\n\nSpec sources — read in the repo:\n1. docs/design/spellpaw-phase1-implementation.md §5 (异步流程): short-link click flow (M4, out of scope); 发布队列: BullMQ publishQueue, TwitterWorker/LinkedInWorker/InstagramWorker isolated, 3 retries with backoff 30s/2m/8m, status flow Queued → Posting → Published / Failed, one channel failure NOT blocking others; 排程: ≤7 天 BullMQ delay + jobId = \"post:{id}\" idempotent reschedule, >7 天 status=SCHEDULED + 5-min cron reconciler (SELECT status='SCHEDULED' AND scheduledAt ≤ NOW() → push to publishQueue).\n2. docs/design/spellpaw-prd-phase1.md M2 milestone: 多 Channel Composer + Variant 管理、完全体 Calendar、Scheduler + Queue 完整链路.\n3. Implementation spec §1: PublishState enum = DRAFT | PUBLISHED | FAILED — queue state must NOT be added to the DB schema; §8: Publish 单条失败 → PostCard 红框 + 错误信息, queue auto-retry.\n\nKnown intentional deviations already documented in code (do NOT re-flag as new findings, but do verify they are actually documented): (a) per-channel publish queues (publish-<slug>) instead of one shared publishQueue — BullMQ v6 job routing; (b) backoff is exponential 30s base instead of exact 30s/2m/8m ladder; (c) instrumentation.ts starts workers in the Next.js process.\n\nBrief: Report (a) requirements the spec asked for that are missing or partial within M2 scope (quote the spec line); (b) behaviour in the diff that wasn't asked for (scope creep); (c) requirements that look implemented but where the implementation looks wrong (quote spec line + explain mismatch). Pay attention to: the ≤7d/>7d boundary handling, idempotent reschedule (jobId replace semantics), cancel behavior, reconciler query semantics, retry/backoff configuration reachable in prod, worker failure handling vs permanent errors, 202/queue-state API surface, and whether queue state ever leaks into the DB. Under 400 words.",
+  "exitCode": 0,
+  "usage": {
+    "input": 28827,
+    "output": 17243,
+    "cacheRead": 351872,
+    "cacheWrite": 0,
+    "cost": 0.009849061600000002,
+    "turns": 17
+  },
+  "model": "deepseek/deepseek-v4-flash:high",
+  "attemptedModels": [
+    "deepseek/deepseek-v4-flash:high"
+  ],
+  "modelAttempts": [
+    {
+      "model": "deepseek/deepseek-v4-flash:high",
+      "success": true,
+      "exitCode": 0,
+      "usage": {
+        "input": 28827,
+        "output": 17243,
+        "cacheRead": 351872,
+        "cacheWrite": 0,
+        "cost": 0.009849061600000002,
+        "turns": 17
+      }
+    }
+  ],
+  "durationMs": 191403,
+  "toolCount": 24,
+  "launchContractDigest": "2be37725fc8e175b1217334cfe8f92808460d01e3cd404636f910b2d2a6bea35",
+  "launchResolvedExtensions": {
+    "version": 1,
+    "source": "launch-resolved",
+    "disableAmbientExtensions": false,
+    "runtime": [
+      "sha256:9af91292ea4e4f50"
+    ],
+    "configured": [],
+    "effective": [
+      "sha256:9af91292ea4e4f50"
+    ],
+    "omitted": {
+      "runtime": 0,
+      "configured": 0,
+      "effective": 0
+    }
+  },
+  "acceptance": {
+    "status": "attested",
+    "evidenceStatus": "attested",
+    "explicit": false,
+    "effectiveAcceptance": {
+      "level": "attested",
+      "explicit": false,
+      "inferredReason": [
+        "read-only/reviewer-style agent"
+      ],
+      "criteria": [
+        {
+          "id": "criterion-1",
+          "must": "Return concrete findings with file paths and severity when applicable",
+          "evidence": [
+            "review-findings",
+            "residual-risks"
+          ],
+          "severity": "required"
+        }
+      ],
+      "evidence": [
+        "review-findings",
+        "residual-risks"
+      ],
+      "verify": [],
+      "stopRules": []
+    },
+    "inferredReason": [
+      "read-only/reviewer-style agent"
+    ],
+    "criteria": [
+      {
+        "id": "criterion-1",
+        "must": "Return concrete findings with file paths and severity when applicable",
+        "evidence": [
+          "review-findings",
+          "residual-risks"
+        ],
+        "severity": "required"
+      }
+    ],
+    "runtimeChecks": [],
+    "verifyRuns": [],
+    "childReport": {
+      "criteriaSatisfied": [
+        {
+          "id": "criterion-1",
+          "status": "satisfied",
+          "evidence": "Findings with file:line and severity: blocker (queue.ts:98-101 stale delayed job on ≤7d→>7d reschedule, violates spec §5 idempotent-reschedule), medium (queue.ts:207-208/229-230 reconciler re-enqueues terminal-FAILED variants every 5 min), notes (queue.ts:176-181 delayed→scheduled mapping; http.ts:96-104 N+1 Redis lookups; FR-018/FR-024 partial M2 gaps). Spec quotes cited for each."
+        }
+      ],
+      "changedFiles": [
+        "src/server/queue.ts",
+        "src/server/queue-domain.ts",
+        "src/server/queue-domain.test.ts",
+        "src/server/publisher.ts",
+        "src/server/posts.ts",
+        "src/server/http.ts",
+        "src/instrumentation.ts",
+        "src/app/api/[[...route]]/route.ts",
+        "src/app/(dashboard)/[workspaceId]/content/PostList.tsx",
+        "src/app/(dashboard)/[workspaceId]/content/CalendarPanel.tsx",
+        "src/app/(dashboard)/[workspaceId]/content/Composer.tsx",
+        "tests/integration/queue.test.ts",
+        "tests/integration/api.test.ts",
+        "package.json",
+        "vitest.config.ts",
+        "docker-compose.yml",
+        ".env.example",
+        ".github/workflows/ci.yml",
+        "README.md"
+      ],
+      "testsAddedOrUpdated": [
+        "tests/integration/queue.test.ts",
+        "tests/integration/api.test.ts",
+        "src/server/queue-domain.test.ts"
+      ],
+      "commandsRun": [
+        {
+          "command": "git diff 60f3eba --cached --stat -- . ':(exclude)pnpm-lock.yaml'",
+          "result": "passed",
+          "summary": "19 files changed, +1029/-121"
+        },
+        {
+          "command": "pnpm vitest run src/server/queue-domain.test.ts src/domain/post.test.ts",
+          "result": "passed",
+          "summary": "21 unit tests passed"
+        },
+        {
+          "command": "pnpm test",
+          "result": "passed",
+          "summary": "8 files / 76 tests passed incl. real-Redis queue integration suite"
+        }
+      ],
+      "validationOutput": [
+        "76/76 tests pass; docker postgres+redis present. Diff verified against spec §5 (发布队列/排程), PRD M2 (FR-016..FR-025), impl spec §1/§8. Queue state confirmed absent from prisma schema (PublishState=DRAFT|PUBLISHED|FAILED only)."
+      ],
+      "residualRisks": [
+        "Blocker: rescheduling a post from ≤7d to >7d leaves the old delayed job armed; it fires at the original time and publishes early (queue.ts:98-101) — no test covers this direction",
+        "Medium: reconciler and scheduler processor re-enqueue permanently-FAILED variants every 5 min for overdue SCHEDULED posts, causing infinite failing-job churn and errorMessage rewrites (queue.ts:207-208, 229-230)",
+        "N+1 Redis getJob per variant in enrichQueueStates risks calendar 300ms perf budget (http.ts:96-104)",
+        "FR-018 Calendar drag-to-reschedule still unimplemented (README lists as M2 leftover); FR-024 per-post (X: 1/2) progress counter not implemented",
+        "deviation (b) exponential backoff documented in README but not in a code comment at queue.ts:87"
+      ],
+      "noStagedFiles": false,
+      "diffSummary": "M2 BullMQ queue+scheduling: per-channel publish queues with isolated workers, ≤7d delayed scheduler + 5-min cron reconciler, 202 publish API with live queue-state enrichment, sync publisher test fake, Redis infra + integration tests.",
+      "reviewFindings": [
+        "blocker: src/server/queue.ts:98-101 - schedule() early-returns for >7d without removing an already-armed delayed job; reschedule from ≤7d to >7d fires at the old time and publishes early (spec §5 idempotent reschedule)",
+        "medium: src/server/queue.ts:207-208,229-230 - ready-filter includes FAILED variants; reconciler re-enqueues terminal failures every 5 min forever for overdue SCHEDULED posts (spec §1/§8 terminal FAILED)",
+        "note: src/server/queue.ts:176-181 - retry backoff state (delayed) surfaces as 'scheduled' in UI",
+        "note: src/server/http.ts:96-104 - sequential Redis getJob per variant on list/detail/calendar endpoints",
+        "note: docs/design/spellpaw-prd-phase1.md FR-018 (drag-to-reschedule) unimplemented, README lists as M2 leftover; FR-024 (X: 1/2) counter partial"
+      ],
+      "manualNotes": "No plan.md/progress.md at repo root (ENOENT) — reviewed from diff + spec docs only. Reviewer did not modify files. All spec-mandated core flows (boundary, reconciler query, 202, no-DB-leak, isolation, permanent-vs-transient) verified correct; two correctness defects found above."
+    }
+  },
+  "effects": {
+    "fileMutation": {
+      "status": "not-applicable",
+      "expected": false,
+      "attempted": true
+    }
+  },
+  "transcriptPath": "/Users/nicholasl/Documents/build-whatever/SpellPaw/.pi-subagents/artifacts/1ff6c147_reviewer_1_transcript.jsonl",
+  "timestamp": 1785749117719
+}

@@ -1,0 +1,188 @@
+{
+  "runId": "1ff6c147",
+  "agent": "reviewer",
+  "task": "[Read from: /Users/nicholasl/Documents/build-whatever/SpellPaw/plan.md, /Users/nicholasl/Documents/build-whatever/SpellPaw/progress.md]\n\nYou are the STANDARDS axis of a code review for the SpellPaw M2 milestone (BullMQ queue + scheduling) — staged changes on top of commit 60f3eba.\n\nFixed point: commit 60f3eba. Diff command (run from /Users/nicholasl/Documents/build-whatever/SpellPaw):\n  git diff 60f3eba --cached -- . ':(exclude)pnpm-lock.yaml'\nCommit list: no commits yet — the entire M2 change is the staged working tree.\n\nStandards sources: AGENTS.md, docs/agents/*, CONTEXT.md (ubiquitous language: Post/PostVariant/Channel/Workspace, statuses DRAFT/SCHEDULED/PUBLISHED, PublishState DRAFT/PUBLISHED/FAILED), and technical decisions in docs/design/spellpaw-phase1-implementation.md §5 (BullMQ publishQueue, per-channel isolated workers, retries with backoff 30s/2m/8m, ≤7d delay + 5-min cron reconciler, idempotent jobId reschedule, one channel failure not blocking others) and §1 (schema unchanged — queue state must NOT be added to DB enums).\n\nPlus this fixed smell baseline (Fowler, Refactoring ch.3) — each is a labelled judgement call, never a hard violation; a documented repo standard overrides the baseline; skip anything tooling enforces (typecheck/lint):\n- Mysterious Name — name doesn't reveal what it does → rename.\n- Duplicated Code — same logic shape in more than one hunk/file → extract shared shape.\n- Feature Envy — method reaches into another object's data more than its own → move method onto the data.\n- Data Clumps — same few fields/params travel together → bundle into one type.\n- Primitive Obsession — primitive standing in for a domain concept → give it its own small type.\n- Repeated Switches — same switch/if-cascade on the same type recurs → one map both sites share.\n- Shotgun Surgery — one logical change forces scattered edits → gather into one module.\n- Divergent Change — one file edited for several unrelated reasons → split.\n- Speculative Generality — abstraction/params/hooks for needs the spec doesn't have → delete.\n- Message Chains — long a.b().c().d() navigation → hide behind one method.\n- Middle Man — class that mostly delegates onward → cut it.\n- Refused Bequest — implementer ignores most of what it inherits → composition.\n\nAlso scrutinize: resource lifecycle (Redis connections/queues/workers opened per call vs shared; leaks), error paths (worker 'failed' handler idempotency, double-marking), and the sync-fake publisher in tests drifting from real worker behavior.\n\nBrief: Report — per file/hunk where relevant — (a) every place the diff violates a documented standard: cite the standard (file + the rule); and (b) any baseline smell you spot: name it and quote the hunk. Distinguish hard violations from judgement calls — documented-standard breaches can be hard, but baseline smells are always judgement calls, and a documented repo standard overrides the baseline. Skip anything tooling enforces. Under 400 words.",
+  "exitCode": 0,
+  "usage": {
+    "input": 31800,
+    "output": 19185,
+    "cacheRead": 491648,
+    "cacheWrite": 0,
+    "cost": 0.011200414400000002,
+    "turns": 17
+  },
+  "model": "deepseek/deepseek-v4-flash:high",
+  "attemptedModels": [
+    "deepseek/deepseek-v4-flash:high"
+  ],
+  "modelAttempts": [
+    {
+      "model": "deepseek/deepseek-v4-flash:high",
+      "success": true,
+      "exitCode": 0,
+      "usage": {
+        "input": 31800,
+        "output": 19185,
+        "cacheRead": 491648,
+        "cacheWrite": 0,
+        "cost": 0.011200414400000002,
+        "turns": 17
+      }
+    }
+  ],
+  "durationMs": 221959,
+  "toolCount": 32,
+  "launchContractDigest": "1ceaad50eefc47dbd3868b4961c8033a7c5db7b3375e1d2757a04379905d1414",
+  "launchResolvedExtensions": {
+    "version": 1,
+    "source": "launch-resolved",
+    "disableAmbientExtensions": false,
+    "runtime": [
+      "sha256:9af91292ea4e4f50"
+    ],
+    "configured": [],
+    "effective": [
+      "sha256:9af91292ea4e4f50"
+    ],
+    "omitted": {
+      "runtime": 0,
+      "configured": 0,
+      "effective": 0
+    }
+  },
+  "acceptance": {
+    "status": "attested",
+    "evidenceStatus": "attested",
+    "explicit": false,
+    "effectiveAcceptance": {
+      "level": "attested",
+      "explicit": false,
+      "inferredReason": [
+        "read-only/reviewer-style agent"
+      ],
+      "criteria": [
+        {
+          "id": "criterion-1",
+          "must": "Return concrete findings with file paths and severity when applicable",
+          "evidence": [
+            "review-findings",
+            "residual-risks"
+          ],
+          "severity": "required"
+        }
+      ],
+      "evidence": [
+        "review-findings",
+        "residual-risks"
+      ],
+      "verify": [],
+      "stopRules": []
+    },
+    "inferredReason": [
+      "read-only/reviewer-style agent"
+    ],
+    "criteria": [
+      {
+        "id": "criterion-1",
+        "must": "Return concrete findings with file paths and severity when applicable",
+        "evidence": [
+          "review-findings",
+          "residual-risks"
+        ],
+        "severity": "required"
+      }
+    ],
+    "runtimeChecks": [],
+    "verifyRuns": [],
+    "childReport": {
+      "criteriaSatisfied": [
+        {
+          "id": "criterion-1",
+          "status": "satisfied",
+          "evidence": "Diff reviewed file-by-file vs AGENTS.md/CONTEXT.md/docs/design/spellpaw-phase1-implementation.md §1+§5; typecheck passed; full suite 76/76 passed including real-Redis queue integration tests; findings cited with file:line and severity."
+        }
+      ],
+      "changedFiles": [
+        "src/server/queue.ts",
+        "src/server/queue-domain.ts",
+        "src/server/queue-domain.test.ts",
+        "src/server/publisher.ts",
+        "src/server/posts.ts",
+        "src/server/http.ts",
+        "src/instrumentation.ts",
+        "src/app/api/[[...route]]/route.ts",
+        "src/app/(dashboard)/[workspaceId]/content/PostList.tsx",
+        "src/app/(dashboard)/[workspaceId]/content/Composer.tsx",
+        "src/app/(dashboard)/[workspaceId]/content/CalendarPanel.tsx",
+        "tests/integration/queue.test.ts",
+        "tests/integration/api.test.ts",
+        "vitest.config.ts",
+        "package.json",
+        "docker-compose.yml",
+        ".env.example",
+        ".github/workflows/ci.yml",
+        "README.md"
+      ],
+      "testsAddedOrUpdated": [
+        "tests/integration/queue.test.ts",
+        "src/server/queue-domain.test.ts",
+        "tests/integration/api.test.ts"
+      ],
+      "commandsRun": [
+        {
+          "command": "pnpm typecheck",
+          "result": "passed",
+          "summary": "tsc --noEmit clean"
+        },
+        {
+          "command": "npx vitest run src/server/queue-domain.test.ts",
+          "result": "passed",
+          "summary": "7/7 unit tests"
+        },
+        {
+          "command": "npx vitest run tests/integration/queue.test.ts",
+          "result": "passed",
+          "summary": "9/9 real-Redis queue tests"
+        },
+        {
+          "command": "npx vitest run",
+          "result": "passed",
+          "summary": "76/76 across 8 files"
+        }
+      ],
+      "validationOutput": [
+        "No lint/type errors. All integration tests green against dockerized Postgres+Redis. BullMQ v6.0.6 'failed' event semantics and exponential backoff formula verified in node_modules."
+      ],
+      "residualRisks": [
+        "schedule() early-return on >7d reschedule leaves a stale delayed job (queue.ts:101) - post can fire early when rescheduled from ≤7d to >7d",
+        "Ephemeral createPublisher per scheduler/reconciler job leaks Redis connections (queue.ts:211,233; no close path on Publisher)",
+        "Sync fake in api.test.ts drifts from real worker: no retry/backoff, no-op schedule/cancel, null queueState - queue wiring of schedule endpoints untested at API layer",
+        "Retry/backoff defaults (3 attempts, 30s/60s) deviate from spec's 3 retries 30s/2m/8m",
+        "N+1 queue-state enrichment on list/calendar endpoints; fire-and-forget upsertJobScheduler can throw unhandled rejection at boot",
+        "plan.md and progress.md not found at the paths given in the task"
+      ],
+      "noStagedFiles": false,
+      "diffSummary": "M2 staged working tree on 60f3eba: BullMQ queue layer (per-channel publish queues, scheduler queue, 5-min reconciler), Publisher seam, 202-async publish path, queue-state badges, Redis infra (CI/docker/env/README), +12 queue/domain tests.",
+      "reviewFindings": [
+        "minor: queue.ts:51 - backoff defaults deviate from spec §5 '3 retries 30s/2m/8m' (gives 2 retries at 30s/60s)",
+        "major: queue.ts:101 - reschedule from ≤7d to >7d leaves stale delayed job that fires early",
+        "major: queue.ts:211,233 - new publisher per job leaks unclosed Redis connections",
+        "note: queue-domain.ts:5 - DAY_MS_QUEUE unused (Mysterious Name/Speculative Generality)",
+        "note: queue.ts:202 vs 238 + posts.ts:164 vs 250 - duplicated logic shapes",
+        "note: queue.ts:89/114 - 86_400 seconds vs 86_400_000 ms unit confusion",
+        "note: api.test.ts syncPublisher drift documented, acceptable but leaves schedule-endpoint queue wiring untested",
+        "no blockers"
+      ],
+      "manualNotes": "plan.md/progress.md missing at task-stated paths; reviewed diff + standards directly instead. Findings 1-2 and the connection leak are the items to fix or consciously accept before M2 sign-off."
+    }
+  },
+  "effects": {
+    "fileMutation": {
+      "status": "not-applicable",
+      "expected": false,
+      "attempted": true
+    }
+  },
+  "transcriptPath": "/Users/nicholasl/Documents/build-whatever/SpellPaw/.pi-subagents/artifacts/1ff6c147_reviewer_0_transcript.jsonl",
+  "timestamp": 1785749148266
+}

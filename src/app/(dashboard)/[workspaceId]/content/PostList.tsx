@@ -16,6 +16,7 @@ export interface PostSummary {
     charCount: number;
     publishState: "DRAFT" | "PUBLISHED" | "FAILED";
     errorMessage: string | null;
+    queueState?: "queued" | "posting" | "scheduled" | null;
     channel: { slug: string; name: string };
   }>;
 }
@@ -24,6 +25,12 @@ const STATUS_STYLE: Record<PostSummary["status"], string> = {
   DRAFT: "bg-zinc-100 text-zinc-600",
   SCHEDULED: "bg-blue-50 text-blue-700",
   PUBLISHED: "bg-green-50 text-green-700",
+};
+
+const QUEUE_LABEL: Record<NonNullable<PostSummary["variants"][number]["queueState"]>, string> = {
+  queued: "queued",
+  posting: "posting…",
+  scheduled: "delayed",
 };
 
 export function PostList({
@@ -41,6 +48,12 @@ export function PostList({
       return res.posts;
     },
     initialData: initialPosts,
+    // Poll while any variant is mid-flight through the queue.
+    refetchInterval: (query) => {
+      const posts = query.state.data ?? [];
+      const busy = posts.some((p) => p.variants.some((v) => v.queueState));
+      return busy ? 2500 : false;
+    },
   });
 
   return (
@@ -76,7 +89,17 @@ export function PostList({
                 {post.variants.map((v) => (
                   <span key={v.id} className="inline-flex items-center gap-1">
                     <span className="font-medium">{v.channel.name}</span>
-                    {v.publishState === "FAILED" ? (
+                    {v.queueState ? (
+                      <span
+                        className={`rounded px-1.5 py-0.5 text-[11px] ${
+                          v.queueState === "posting"
+                            ? "animate-pulse bg-blue-50 text-blue-700"
+                            : "bg-amber-50 text-amber-700"
+                        }`}
+                      >
+                        {QUEUE_LABEL[v.queueState]}
+                      </span>
+                    ) : v.publishState === "FAILED" ? (
                       <span className="text-red-600" title={v.errorMessage ?? "failed"}>
                         failed{v.errorMessage ? `: ${v.errorMessage}` : ""}
                       </span>

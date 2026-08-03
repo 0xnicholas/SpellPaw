@@ -16,6 +16,7 @@ interface CalendarPost {
     content: string;
     publishState: string;
     errorMessage: string | null;
+    queueState?: "queued" | "posting" | "scheduled" | null;
     channel: { slug: string; name: string };
   }>;
 }
@@ -125,6 +126,9 @@ export function CalendarPanel({ workspaceId }: { workspaceId: string }) {
                       <div className="font-medium">{post.title ?? post.variants[0]?.content.slice(0, 28) ?? "Untitled"}</div>
                       <div className="opacity-70">
                         {post.variants.map((v) => v.channel.slug).join(", ")} · {timeLabel(post)}
+                        {post.variants.some((v) => v.queueState === "posting") && (
+                          <span className="ml-1 animate-pulse text-blue-700">posting…</span>
+                        )}
                       </div>
                     </div>
                   ))}

@@ -10,17 +10,29 @@ SpellPaw 面向 SMB 和 AI-native builders，将内容营销、客户服务和�
 
 ## 当前阶段
 
-**Phase 1 · M1 "Hello Graph" 已实现** — 最小可用闭环：
+**Phase 1 · M1 + M2 已实现**
+
+M1 "Hello Graph"：
 
 - ✅ 注册/登录（Auth.js 邮箱 magic link，dev 模式打印到控制台）
 - ✅ Workspace 引导（首次登录自动创建）
 - ✅ 单渠道连接（OAuth2 PKCE 流程，token AES-256-GCM 加密存储；未配置凭据时用 MockAdapter 走通全流程）
 - ✅ Composer：创建 Post + 按渠道维护 Variant + 字符数校验
-- ✅ 发布（Draft → Published，渠道隔离失败不影响其他渠道）与排程（Draft → Scheduled）
-- ✅ 基础 Calendar（周视图，展示 Scheduled/Published）
-- ✅ 嵌入 Hono API（/api/*）+ Vitest 单元/集成测试（54 个）+ GitHub Actions CI
+- ✅ 发布与排程状态机 + 基础 Calendar（周视图）
+- ✅ 嵌入 Hono API（/api/*）+ Vitest 测试 + GitHub Actions CI
 
-**未实现（后续里程碑）**：BullMQ 发布队列（M2）、短链接 + Content Touch（M4）、MCP Server（M3）、媒体生成（M4）、分析面板（M4）、i18n（M4）。
+M2 "队列 + 排程"：
+
+- ✅ BullMQ v6 队列（Redis）：每个渠道独立 publish 队列 + Worker（并发 5）
+- ✅ 发布流程：202 Accepted → 队列异步执行 → Published/Failed；渠道失败互不阻塞
+- ✅ 失败重试：瞬时错误 3 次指数退避（30s/60s/120s），永久错误（校验/未连接）不重试直接标记
+- ✅ FAILED variant 可重新发布（幂等 jobId，不重复入队）
+- ✅ 排程：≤7 天用 BullMQ delayed job（jobId 幂等，改期先删后加），>7 天由 5 分钟 cron reconciler 兑底
+- ✅ 取消排程：移除 scheduler job + 待触发的 publish job
+- ✅ UI：PostList/Calendar 显示 queued/posting 状态徽章，非终态时 2.5s 轮询
+- ✅ 队列集成测试（9 个，真实 Redis）；全量 76 个测试
+
+**未实现（后续里程碑）**：MCP Server（M3）、短链接 + Content Touch（M4）、媒体生成（M4）、分析面板（M4）、i18n（M4）、Calendar 拖拽（M2 尾项）。
 
 - [产品概念设计](docs/design/2026-07-31-spellpaw-concept.md)
 - [Phase 1 PRD](docs/design/spellpaw-prd-phase1.md)
@@ -36,6 +48,7 @@ SpellPaw 面向 SMB 和 AI-native builders，将内容营销、客户服务和�
 | 后端 | Hono（嵌入 Next.js，`/api/[[...route]]`） |
 | ORM | Prisma 7（driver adapter + pg） |
 | 数据库 | PostgreSQL + pgvector（Docker Compose，宿主机端口 5433） |
+| 队列 | BullMQ v6 + Redis（Docker Compose，端口 6379） |
 | 认证 | Auth.js v5 + 邮箱 magic link（JWT 会话） |
 | 状态 | Zustand（Composer 编辑器）+ TanStack Query（服务端持久化） |
 | 测试 | Vitest（单元 + 集成，测试库 `spellpaw_test`） |
@@ -46,7 +59,7 @@ SpellPaw 面向 SMB 和 AI-native builders，将内容营销、客户服务和�
 ## 本地开发
 
 ```bash
-# 1. 基础设施（Postgres + pgvector）
+# 1. 基础设施（Postgres + pgvector + Redis）
 docker compose up -d
 
 # 2. 环境变量
@@ -62,7 +75,7 @@ pnpm db:seed
 pnpm dev        # http://localhost:3000 —— magic link 打印在终端
 
 # 5. 测试
-pnpm test              # 单元 + 集成（依赖 docker 里的 Postgres）
+pnpm test              # 单元 + 集成（依赖 docker 里的 Postgres + Redis）
 pnpm typecheck
 pnpm lint
 ```

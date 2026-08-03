@@ -8,26 +8,65 @@ import { createPrismaClient } from "@/lib/db";
 import { encryptString } from "@/lib/crypto";
 import { MockAdapter } from "@/adapters/channels/mock";
 import type { ChannelAdapter } from "@/adapters/channels/types";
+import type { Publisher } from "@/server/publisher";
+import { PermanentPublishError, publishVariantToChannel, settlePost } from "@/server/posts";
+import { markVariantFailed } from "@/domain/post";
 import { resetTestSchema, TEST_DATABASE_URL } from "./setup";
 
 const ACCOUNT = "test-account-1";
 const KEY = Buffer.from("k".repeat(32), "utf8");
 const enc = (s: string) => encryptString(s, KEY);
 
+/**
+ * Synchronous publisher — runs the same core the BullMQ worker runs
+ * (publishVariantToChannel + settlePost), so API tests stay deterministic
+ * without Redis. The real queue path is covered in queue.test.ts.
+ */
+function syncPublisher(adapters: Record<string, ChannelAdapter>): Publisher {
+  return {
+    async enqueuePublish(postId, workspaceId, variantIds) {
+      for (const variantId of variantIds) {
+        const variant = await prisma.postVariant.findUnique({
+          where: { id: variantId },
+          include: { channel: true },
+        });
+        if (!variant) continue;
+        try {
+          const outcome = await publishVariantToChannel(prisma, adapters, KEY, variant, workspaceId);
+          if (outcome.state === "failed") throw new Error(outcome.message);
+        } catch (err) {
+          if (err instanceof PermanentPublishError) continue; // already marked FAILED
+          await prisma.postVariant.update({
+            where: { id: variantId },
+            data: markVariantFailed(err instanceof Error ? err.message : String(err)),
+          });
+        }
+      }
+      await settlePost(prisma, postId);
+      return { queued: variantIds.length };
+    },
+    schedule: async () => {},
+    cancelSchedule: async () => {},
+    getVariantQueueState: async () => null,
+    close: async () => {},
+  };
+}
+
 function makeApp(options?: {
   getAccountId?: (c: Context) => Promise<string | null>;
   adapters?: Record<string, ChannelAdapter>;
 }) {
+  const adapters = options?.adapters ?? {
+    twitter: new MockAdapter("twitter"),
+    linkedin: new MockAdapter("linkedin"),
+    instagram: new MockAdapter("instagram"),
+  };
   const app = createApiApp({
     prisma,
     encryptionKey: KEY,
-    adapters: options?.adapters ?? {
-      twitter: new MockAdapter("twitter"),
-      linkedin: new MockAdapter("linkedin"),
-      instagram: new MockAdapter("instagram"),
-    },
-    getAccountId:
-      options?.getAccountId ?? (async () => ACCOUNT),
+    adapters,
+    publisher: syncPublisher(adapters),
+    getAccountId: options?.getAccountId ?? (async () => ACCOUNT),
   });
   return app;
 }
@@ -173,6 +212,12 @@ describe("PATCH /api/variants/:id", () => {
 });
 
 describe("publish flow", () => {
+  async function publishedVariant(app: ReturnType<typeof makeApp>, postId: string, slug: string) {
+    const res = await jsonRequest(app, `/api/posts/${postId}`);
+    const { post } = await res.json();
+    return post.variants.find((v: { channel: { slug: string } }) => v.channel.slug === slug);
+  }
+
   it("publishes through the connected channel and flips states", async () => {
     const app = makeApp();
     // Connect the twitter channel first (service-level; HTTP flow tested below).
@@ -185,9 +230,12 @@ describe("publish flow", () => {
     const { post } = await created.json();
 
     const res = await jsonRequest(app, `/api/posts/${post.id}/publish`, { method: "POST" });
-    expect(res.status).toBe(200);
-    const { summary, post: updated } = await res.json();
-    expect(summary.published).toBe(1);
+    expect(res.status).toBe(202);
+    const { queued } = await res.json();
+    expect(queued).toBe(1);
+
+    const detail = await jsonRequest(app, `/api/posts/${post.id}`);
+    const { post: updated } = await detail.json();
     expect(updated.status).toBe("PUBLISHED");
     expect(updated.publishedAt).toBeTruthy();
     expect(updated.variants[0].publishState).toBe("PUBLISHED");
@@ -202,10 +250,13 @@ describe("publish flow", () => {
     const { post } = await created.json();
 
     const res = await jsonRequest(app, `/api/posts/${post.id}/publish`, { method: "POST" });
-    const { summary, post: updated } = await res.json();
-    expect(summary.failed).toBe(1);
-    expect(updated.variants[0].publishState).toBe("FAILED");
-    expect(updated.variants[0].errorMessage).toContain("not connected");
+    expect(res.status).toBe(202);
+    const variant = await publishedVariant(app, post.id, "linkedin");
+    expect(variant.publishState).toBe("FAILED");
+    expect(variant.errorMessage).toContain("not connected");
+
+    const detail = await jsonRequest(app, `/api/posts/${post.id}`);
+    const { post: updated } = await detail.json();
     expect(updated.status).toBe("DRAFT");
   });
 
@@ -235,15 +286,18 @@ describe("publish flow", () => {
     const { post } = await created.json();
 
     const res = await jsonRequest(app, `/api/posts/${post.id}/publish`, { method: "POST" });
-    const { summary, post: updated } = await res.json();
-    expect(summary.published).toBe(1);
-    expect(summary.failed).toBe(1);
-    const bySlug = Object.fromEntries(
-      updated.variants.map((v: { channel: { slug: string }; publishState: string; errorMessage: string | null }) => [v.channel.slug, v]),
-    );
-    expect(bySlug.linkedin.publishState).toBe("PUBLISHED");
-    expect(bySlug.twitter.publishState).toBe("FAILED");
-    expect(bySlug.twitter.errorMessage).toContain("rate limited");
+    expect(res.status).toBe(202);
+    const { queued } = await res.json();
+    expect(queued).toBe(2);
+
+    const linkedin = await publishedVariant(app, post.id, "linkedin");
+    const twitter = await publishedVariant(app, post.id, "twitter");
+    expect(linkedin.publishState).toBe("PUBLISHED");
+    expect(twitter.publishState).toBe("FAILED");
+    expect(twitter.errorMessage).toContain("rate limited");
+
+    const detail = await jsonRequest(app, `/api/posts/${post.id}`);
+    const { post: updated } = await detail.json();
     expect(updated.status).toBe("PUBLISHED");
   });
 
@@ -264,18 +318,16 @@ describe("publish flow", () => {
       body: { variants: [{ channelSlug: "twitter", content: "retry me" }] },
     });
     const { post } = await created.json();
-    const first = await jsonRequest(broken, `/api/posts/${post.id}/publish`, { method: "POST" });
-    const { summary: firstSummary, post: firstPost } = await first.json();
-    expect(firstSummary.failed).toBe(1);
-    expect(firstPost.variants[0].publishState).toBe("FAILED");
+    await jsonRequest(broken, `/api/posts/${post.id}/publish`, { method: "POST" });
+    const first = await publishedVariant(broken, post.id, "twitter");
+    expect(first.publishState).toBe("FAILED");
 
     // Channel recovers (all mocks now) — a second publish retries the FAILED variant.
     const recovered = makeApp();
     const second = await jsonRequest(recovered, `/api/posts/${post.id}/publish`, { method: "POST" });
-    expect(second.status).toBe(200);
-    const { summary: secondSummary, post: secondPost } = await second.json();
-    expect(secondSummary.published).toBe(1);
-    expect(secondPost.variants[0].publishState).toBe("PUBLISHED");
+    expect(second.status).toBe(202);
+    const retried = await publishedVariant(recovered, post.id, "twitter");
+    expect(retried.publishState).toBe("PUBLISHED");
   });
 
   it("rejects publishing an already-published post", async () => {

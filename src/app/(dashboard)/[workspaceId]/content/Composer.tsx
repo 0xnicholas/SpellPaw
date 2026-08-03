@@ -62,7 +62,13 @@ export function Composer({ workspaceId, channels }: Props) {
       setTitle("");
       setScheduledAt("");
       setError(null);
-      setNotice(action === "draft" ? "Draft saved." : action === "schedule" ? "Scheduled." : "Published.");
+      setNotice(
+        action === "draft"
+          ? "Draft saved."
+          : action === "schedule"
+            ? "Scheduled — the queue will publish it on time."
+            : "Queued for publishing — it will appear shortly.",
+      );
     },
     onError: (err) => {
       setError(err instanceof Error ? err.message : String(err));
