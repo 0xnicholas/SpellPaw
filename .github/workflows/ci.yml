@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: spellpaw
+          POSTGRES_PASSWORD: spellpaw
+          POSTGRES_DB: spellpaw
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U spellpaw -d spellpaw"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      # The integration suite resets this schema itself (prisma db push --force-reset).
+      TEST_DATABASE_URL: postgresql://spellpaw:spellpaw@localhost:5433/spellpaw
+      AUTH_SECRET: ci-only-secret-that-is-long-enough-for-hmac
+      ENCRYPTION_KEY: 273QzUL6W1wcibOcncQUMGUUMamLJtfc6fugtSuNTwU=
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm prisma generate
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test (unit + integration)
+        run: pnpm test

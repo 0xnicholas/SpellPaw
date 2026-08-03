@@ -1,0 +1,23 @@
+services:
+  db:
+    # pg16 image (pgvector included); pg17 not yet available in this environment's local cache
+    image: pgvector/pgvector:pg16
+    container_name: spellpaw-db
+    environment:
+      POSTGRES_USER: spellpaw
+      POSTGRES_PASSWORD: spellpaw
+      POSTGRES_DB: spellpaw
+    # Host port 5433 — 5432 is taken by Postgres.app on this machine
+    ports:
+      - "5433:5432"
+    volumes:
+      - spellpaw-pg:/var/lib/postgresql/data
+      - ./docker/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U spellpaw -d spellpaw"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  spellpaw-pg:

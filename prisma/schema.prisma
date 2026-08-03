@@ -1,0 +1,139 @@
+// SpellPaw Phase 1 — M1 data model.
+// See docs/design/spellpaw-phase1-implementation.md §1 for the full Phase 1 model.
+// M1 scope: Workspace, Channel, OAuthConnection, Post, PostVariant.
+// Contact/ContentTouch arrive with short-link tracking (M4); Conversation/Event with Inbox (Phase 2).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum PostStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+}
+
+enum PublishState {
+  DRAFT
+  PUBLISHED
+  FAILED
+}
+
+model Workspace {
+  id               String           @id @default(cuid())
+  // Auth.js user id (JWT session) — Account entity is owned by Auth.js in M1.
+  accountId        String
+  name             String
+  createdAt        DateTime         @default(now())
+  posts            Post[]
+  oauthConnections OAuthConnection[]
+
+  @@index([accountId])
+}
+
+// --- Auth.js adapter models (email magic link persists verification tokens) ---
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  accounts      Account[]
+  sessions      Session[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Channel {
+  id          String           @id @default(cuid())
+  slug        String           @unique
+  name        String
+  connections OAuthConnection[]
+  variants    PostVariant[]
+}
+
+model OAuthConnection {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  channelId    String
+  // AES-256-GCM encrypted at rest (ENCRYPTION_KEY). See src/lib/crypto.ts.
+  accessToken  String
+  refreshToken String?
+  expiresAt    DateTime?
+  connectedAt  DateTime  @default(now())
+
+  channel   Channel   @relation(fields: [channelId], references: [id])
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@unique([workspaceId, channelId])
+}
+
+model Post {
+  id          String        @id @default(cuid())
+  workspaceId String
+  title       String?
+  status      PostStatus    @default(DRAFT)
+  scheduledAt DateTime?
+  publishedAt DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id])
+  variants  PostVariant[]
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, scheduledAt])
+}
+
+model PostVariant {
+  id           String       @id @default(cuid())
+  postId       String
+  channelId    String
+  content      String       @default("")
+  charCount    Int          @default(0)
+  publishState PublishState @default(DRAFT)
+  publishedAt  DateTime?
+  errorMessage String?
+
+  post    Post    @relation(fields: [postId], references: [id])
+  channel Channel @relation(fields: [channelId], references: [id])
+
+  @@unique([postId, channelId])
+}

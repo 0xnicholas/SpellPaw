@@ -1,0 +1,226 @@
+{
+  "runId": "8ad48060",
+  "agent": "reviewer",
+  "task": "[Read from: /Users/nicholasl/Documents/build-whatever/SpellPaw/plan.md, /Users/nicholasl/Documents/build-whatever/SpellPaw/progress.md]\n\nYou are the SPEC axis of a code review for the SpellPaw M1 implementation (Next.js + Hono + Prisma, uncommitted staged changes).\n\nFixed point: commit ac754f9 (docs-only repo state). Diff command (run from /Users/nicholasl/Documents/build-whatever/SpellPaw):\n  git diff ac754f9 --cached -- . ':(exclude)pnpm-lock.yaml' ':(exclude)src/app/favicon.ico'\n\nSpec sources — read these files in the repo:\n1. docs/design/spellpaw-phase1-implementation.md — the Phase 1 implementation specification (data model §1, API routes §2, MCP §3 (out of M1 scope), component tree §4, async flows §5, security §6, i18n §7, errors §8, DB ops §9).\n2. docs/design/spellpaw-prd-phase1.md — success metrics and milestone table; M1 'Hello Graph' = 最小可用: 注册、单个 Channel 连接、Composer 创建/发布单一 Channel Post、基础 Calendar. M2+ (BullMQ queue, short links, MCP, media, analytics, i18n) are explicitly OUT of M1 scope.\n3. CONTEXT.md — domain terminology the implementation should respect (Post, PostVariant, Channel, Workspace, statuses).\n\nThe user scoped this implementation to M1 only — do NOT flag M2–M6 features (BullMQ, short links, ContentTouch/Contact, MCP, media, analytics, i18n) as missing; they are out of scope by decision.\n\nBrief: Report (a) requirements the spec asked for that are missing or partial within M1 scope (quote the spec line for each); (b) behaviour in the diff that wasn't asked for (scope creep); (c) requirements that look implemented but where the implementation looks wrong (quote spec line + explain the mismatch). Pay attention to: schema-vs-spec field alignment (Post/PostVariant/OAuthConnection/Workspace), API route paths vs §2, status flow Draft→Scheduled→Published, one-channel-failure isolation, AES-256-GCM token encryption, OAuth connect flow, calendar query semantics. Under 400 words.",
+  "exitCode": 0,
+  "usage": {
+    "input": 43357,
+    "output": 16980,
+    "cacheRead": 581120,
+    "cacheWrite": 0,
+    "cost": 0.012451515999999998,
+    "turns": 20
+  },
+  "model": "deepseek/deepseek-v4-flash:high",
+  "attemptedModels": [
+    "deepseek/deepseek-v4-flash:high"
+  ],
+  "modelAttempts": [
+    {
+      "model": "deepseek/deepseek-v4-flash:high",
+      "success": true,
+      "exitCode": 0,
+      "usage": {
+        "input": 43357,
+        "output": 16980,
+        "cacheRead": 581120,
+        "cacheWrite": 0,
+        "cost": 0.012451515999999998,
+        "turns": 20
+      }
+    }
+  ],
+  "durationMs": 201330,
+  "toolCount": 47,
+  "launchContractDigest": "fa630e4326a1d8cdb99dd954ebe28f97b615e16eb6d544ec09fbf5a332bfcc66",
+  "launchResolvedExtensions": {
+    "version": 1,
+    "source": "launch-resolved",
+    "disableAmbientExtensions": false,
+    "runtime": [
+      "sha256:9af91292ea4e4f50"
+    ],
+    "configured": [],
+    "effective": [
+      "sha256:9af91292ea4e4f50"
+    ],
+    "omitted": {
+      "runtime": 0,
+      "configured": 0,
+      "effective": 0
+    }
+  },
+  "acceptance": {
+    "status": "attested",
+    "evidenceStatus": "attested",
+    "explicit": false,
+    "effectiveAcceptance": {
+      "level": "attested",
+      "explicit": false,
+      "inferredReason": [
+        "read-only/reviewer-style agent"
+      ],
+      "criteria": [
+        {
+          "id": "criterion-1",
+          "must": "Return concrete findings with file paths and severity when applicable",
+          "evidence": [
+            "review-findings",
+            "residual-risks"
+          ],
+          "severity": "required"
+        }
+      ],
+      "evidence": [
+        "review-findings",
+        "residual-risks"
+      ],
+      "verify": [],
+      "stopRules": []
+    },
+    "inferredReason": [
+      "read-only/reviewer-style agent"
+    ],
+    "criteria": [
+      {
+        "id": "criterion-1",
+        "must": "Return concrete findings with file paths and severity when applicable",
+        "evidence": [
+          "review-findings",
+          "residual-risks"
+        ],
+        "severity": "required"
+      }
+    ],
+    "runtimeChecks": [],
+    "verifyRuns": [],
+    "childReport": {
+      "criteriaSatisfied": [
+        {
+          "id": "criterion-1",
+          "status": "satisfied",
+          "evidence": "Findings cite file paths + line numbers: calendar API-param deviation (http.ts:229-239), FR-020 UTC-only semantics (CalendarPanel.tsx:34-98, Composer.tsx:155-161), partial-failure publish lockout (posts.ts:173-177, http.ts:96-99), overdue-SCHEDULED calendar drop (posts.ts:246-251), OAuth callback default-workspace binding (http.ts:117-124), per-browser state cookies (http.ts:141-152), PostVariant.mediaUrls deferral (schema.prisma:66-86), missing §2 routes (http.ts), AES-256-GCM verified (crypto.ts:8-46)."
+        }
+      ],
+      "changedFiles": [
+        ".github/workflows/ci.yml",
+        ".gitignore",
+        "README.md",
+        "docker-compose.yml",
+        "docker/init/01-create-test-db.sql",
+        "eslint.config.mjs",
+        "next.config.ts",
+        "package.json",
+        "pnpm-workspace.yaml",
+        "postcss.config.mjs",
+        "prisma.config.ts",
+        "prisma/migrations/20260803081125_init/migration.sql",
+        "prisma/migrations/20260803082514_auth_adapter/migration.sql",
+        "prisma/schema.prisma",
+        "prisma/seed.ts",
+        "src/adapters/channels/mock.ts",
+        "src/adapters/channels/pkce.ts",
+        "src/adapters/channels/pkce.test.ts",
+        "src/adapters/channels/registry.ts",
+        "src/adapters/channels/registry.test.ts",
+        "src/adapters/channels/twitter.ts",
+        "src/adapters/channels/twitter.test.ts",
+        "src/adapters/channels/types.ts",
+        "src/app/(dashboard)/[workspaceId]/channels/ChannelsClient.tsx",
+        "src/app/(dashboard)/[workspaceId]/channels/page.tsx",
+        "src/app/(dashboard)/[workspaceId]/content/CalendarPanel.tsx",
+        "src/app/(dashboard)/[workspaceId]/content/Composer.tsx",
+        "src/app/(dashboard)/[workspaceId]/content/PostList.tsx",
+        "src/app/(dashboard)/[workspaceId]/content/page.tsx",
+        "src/app/(dashboard)/[workspaceId]/layout.tsx",
+        "src/app/api/[[...route]]/route.ts",
+        "src/app/api/auth/[...nextauth]/route.ts",
+        "src/app/layout.tsx",
+        "src/app/login/LoginForm.tsx",
+        "src/app/login/page.tsx",
+        "src/app/page.tsx",
+        "src/components/DashboardNav.tsx",
+        "src/components/Providers.tsx",
+        "src/domain/post.ts",
+        "src/domain/post.test.ts",
+        "src/lib/auth.ts",
+        "src/lib/client-api.ts",
+        "src/lib/crypto.ts",
+        "src/lib/crypto.test.ts",
+        "src/lib/db.ts",
+        "src/server/channels.ts",
+        "src/server/errors.ts",
+        "src/server/http.ts",
+        "src/server/posts.ts",
+        "src/server/workspaces.ts",
+        "src/stores/composer.ts",
+        "tests/integration/api.test.ts",
+        "tests/integration/setup.ts",
+        "tests/vitest-setup.ts",
+        "vitest.config.ts",
+        "tsconfig.json"
+      ],
+      "testsAddedOrUpdated": [
+        "src/adapters/channels/pkce.test.ts",
+        "src/adapters/channels/registry.test.ts",
+        "src/adapters/channels/twitter.test.ts",
+        "src/domain/post.test.ts",
+        "src/lib/crypto.test.ts",
+        "tests/integration/api.test.ts",
+        "tests/integration/setup.ts"
+      ],
+      "commandsRun": [
+        {
+          "command": "git diff ac754f9 --cached --stat -- . ':(exclude)pnpm-lock.yaml' ':(exclude)src/app/favicon.ico'",
+          "result": "passed",
+          "summary": "63 files, 3384 insertions, 29 deletions; all additions are new M1 files plus README rewrite"
+        },
+        {
+          "command": "pnpm vitest run",
+          "result": "passed",
+          "summary": "6 test files, 54 tests passed (unit + integration against spellpaw_test Postgres)"
+        }
+      ],
+      "validationOutput": [
+        "vitest: Test Files 6 passed, Tests 54 passed",
+        "Review: AES-256-GCM verified; schema field alignment verified vs §1; one-channel-failure isolation verified by integration test",
+        "plan.md and progress.md do not exist in the repo — review based on the staged diff and spec docs"
+      ],
+      "residualRisks": [
+        "Partial-failure publish lockout: post-level PUBLISHED with a FAILED variant blocks re-publish, so failures are not retryable via API (matters in M2 with multi-variant posts)",
+        "Calendar timezone: FR-020 local-timezone display/interpretation not implemented; datetime-local parsed as server-local time",
+        "Overdue SCHEDULED posts silently vanish from the calendar because only scheduledAt in [start,end) is returned",
+        "OAuth callback binds to the account's default workspace (callback GET cannot carry x-workspace-id); latent while accounts have one workspace",
+        "OAuth state/verifier cookies are per-browser, so concurrent connects invalidate each other",
+        "§2 routes GET /api/posts/:id, GET /api/variants/:vid, PATCH /api/schedule/:pid not implemented (partially justified as M2)",
+        "M1 has no end-to-end test of the Next.js auth layer (getToken/JWT path is only exercised via injected getAccountId)"
+      ],
+      "noStagedFiles": false,
+      "diffSummary": "M1 'Hello Graph' scaffold: Next.js + embedded Hono API + Prisma 7 schema (Workspace/Channel/OAuthConnection/Post/PostVariant + Auth.js models), OAuth2 PKCE connect flow with AES-256-GCM token encryption, Composer with publish/schedule, UTC week calendar, magic-link auth, seed, CI, and 54 passing tests.",
+      "reviewFindings": [
+        "note: http.ts:229-239 - /api/calendar implemented with start/days instead of §2 view=week&channels=...; channels filter and view dropped",
+        "note: CalendarPanel.tsx:34-98 + Composer.tsx:155-161 - FR-020 local-timezone semantics not honored; all dates UTC; datetime-local parsed as server-local time",
+        "note: posts.ts:173-177 + http.ts:96-99 - post marked PUBLISHED if any variant succeeds, re-publish then rejected; FAILED variants unrecoverable",
+        "note: posts.ts:246-251 - SCHEDULED posts with scheduledAt past the query window disappear from the calendar",
+        "note: http.ts:117-124 - OAuth callback uses ensureWorkspace default workspace since x-workspace-id header is absent on the provider redirect",
+        "note: http.ts:141-152 - OAuth state/verifier cookies per-browser, not per-connect; concurrent connects invalidate each other",
+        "minor: workspaces.ts:10 - default workspace name 'My Workspace' vs FR-002 'Workspace'; no rename UI",
+        "minor: seed.ts + registry.ts - three channels implemented/connectable though M1 specifies single channel (infra-cheap)",
+        "minor: http.ts:202-212 - PATCH /api/variants/:id unused by Composer (dead M2 endpoint)",
+        "ok: crypto.ts:8-46 - AES-256-GCM correct and tested",
+        "ok: posts.ts:132-176 - one-channel-failure isolation implemented and integration-tested",
+        "ok: 54 tests pass; status flow Draft->Scheduled->Published consistent"
+      ],
+      "manualNotes": "plan.md/progress.md referenced by the task do not exist in the repo (ENOENT); this is a review-only task, no files edited. No blockers found — the M1 implementation is coherent and well-tested; findings are M1-edge and M2-latent risks."
+    }
+  },
+  "effects": {
+    "fileMutation": {
+      "status": "not-applicable",
+      "expected": false,
+      "attempted": true
+    }
+  },
+  "transcriptPath": "/Users/nicholasl/Documents/build-whatever/SpellPaw/.pi-subagents/artifacts/8ad48060_reviewer_1_transcript.jsonl",
+  "timestamp": 1785745836981
+}
