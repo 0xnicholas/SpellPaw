@@ -44,8 +44,9 @@ export function validateVariantContent(channelSlug: string, content: string): Va
 
 export function markVariantPublished(
   publishedAt: Date,
-): Pick<PostVariantLike, "publishState" | "publishedAt"> {
-  return { publishState: "PUBLISHED", publishedAt };
+): Pick<PostVariantLike, "publishState" | "publishedAt" | "errorMessage"> {
+  // A successful publish also clears any stale failure message (retry path).
+  return { publishState: "PUBLISHED", publishedAt, errorMessage: null };
 }
 
 export function markVariantFailed(

@@ -111,7 +111,15 @@ export function createPublisher(deps: QueueDeps): Publisher {
         },
       }));
       await Promise.all(
-        jobs.map((job) => queueFor(job.name).add(job.name, job.data, job.opts)),
+        jobs.map((job) => {
+          const q = queueFor(job.name);
+          // BullMQ v6 silently ignores add() with a jobId that already exists
+          // (any state). Retrying a FAILED variant must re-enqueue, so drop the
+          // old job record first — matches the schedule() "drop-then-add" rule.
+          return q
+            .remove(job.opts.jobId as string)
+            .then(() => q.add(job.name, job.data, job.opts));
+        }),
       );
       return { queued: jobs.length };
     },

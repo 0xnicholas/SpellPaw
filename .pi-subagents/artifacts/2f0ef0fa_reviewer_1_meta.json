@@ -1,0 +1,178 @@
+{
+  "runId": "2f0ef0fa",
+  "agent": "reviewer",
+  "task": "[Read from: /Users/nicholasl/Documents/build-whatever/SpellPaw/plan.md, /Users/nicholasl/Documents/build-whatever/SpellPaw/progress.md]\n\nYou are the SPEC axis of a review for a small bug-fix commit in SpellPaw (smoke-test driven) — staged changes on top of 78f0fb9.\n\nFixed point: 78f0fb9. Diff: git diff 78f0fb9 --cached -- . ':(exclude)pnpm-lock.yaml' (run in /Users/nicholasl/Documents/build-whatever/SpellPaw)\n\nContext: a local smoke run of the full closed loop (mock channels) exposed that a variant marked FAILED (e.g. 'channel not connected' when publishing before connecting) could never be retried: POST /api/posts/:id/publish re-enqueued the same BullMQ jobId, which v6 silently ignores when the job already exists. The fix removes the old job record before re-adding (mirroring the existing schedule() drop-then-add rule). Spec sources to judge against:\n\n1. docs/design/spellpaw-phase1-implementation.md — publish state machine: DRAFT → PUBLISHED / FAILED; FAILED is terminal but the user can explicitly retry (spec §5/§8 wording — find the exact 'retry' language and check the fix honors it).\n2. docs/adr/0009 — redirect <30ms and never blocked by interaction writes (this diff touches publish, not redirect — confirm no regression).\n3. The M2 design decision '自动管道只推 DRAFT' (auto-pipeline only pushes DRAFT; FAILED waits for explicit user action) — the fix must NOT make the auto-pipeline (scheduler/reconciler) retry FAILED variants.\n4. docs/api.md — the publish endpoint contract (POST /api/posts/:id/publish) and whether the response/state semantics stay as documented.\n\nAlso judge the new scope: PostVariant.externalId (platform-side id write-through — is it consistent with the adapter contract PublishResult.externalId in types.ts, and does anything else need it, e.g. the MCP post list or analytics? Is leaving it out of those consumers acceptable for this fix?) and markVariantPublished clearing errorMessage (does the UI or MCP tool text promise errorMessage persists for FAILED variants only?).\n\nKnown intentional decisions (don't re-flag): remove-then-add may briefly remove a job that a concurrently-running reconciler just enqueued; single-user product, per-channel serialized workers.\n\nBrief: (a) spec requirements violated or partially honored (quote spec), (b) scope creep, (c) looks-implemented-but-wrong. Under 300 words.",
+  "exitCode": 0,
+  "usage": {
+    "input": 37208,
+    "output": 18624,
+    "cacheRead": 1023744,
+    "cacheWrite": 0,
+    "cost": 0.0132903232,
+    "turns": 35
+  },
+  "model": "deepseek/deepseek-v4-flash:high",
+  "attemptedModels": [
+    "deepseek/deepseek-v4-flash:high"
+  ],
+  "modelAttempts": [
+    {
+      "model": "deepseek/deepseek-v4-flash:high",
+      "success": true,
+      "exitCode": 0,
+      "usage": {
+        "input": 37208,
+        "output": 18624,
+        "cacheRead": 1023744,
+        "cacheWrite": 0,
+        "cost": 0.0132903232,
+        "turns": 35
+      }
+    }
+  ],
+  "durationMs": 199633,
+  "toolCount": 59,
+  "launchContractDigest": "d1334c9e188d6cf17a71981be4da437a130c80d3db332c4f88f74cc102497f0b",
+  "launchResolvedExtensions": {
+    "version": 1,
+    "source": "launch-resolved",
+    "disableAmbientExtensions": false,
+    "runtime": [
+      "sha256:9af91292ea4e4f50"
+    ],
+    "configured": [],
+    "effective": [
+      "sha256:9af91292ea4e4f50"
+    ],
+    "omitted": {
+      "runtime": 0,
+      "configured": 0,
+      "effective": 0
+    }
+  },
+  "acceptance": {
+    "status": "attested",
+    "evidenceStatus": "attested",
+    "explicit": false,
+    "effectiveAcceptance": {
+      "level": "attested",
+      "explicit": false,
+      "inferredReason": [
+        "read-only/reviewer-style agent"
+      ],
+      "criteria": [
+        {
+          "id": "criterion-1",
+          "must": "Return concrete findings with file paths and severity when applicable",
+          "evidence": [
+            "review-findings",
+            "residual-risks"
+          ],
+          "severity": "required"
+        }
+      ],
+      "evidence": [
+        "review-findings",
+        "residual-risks"
+      ],
+      "verify": [],
+      "stopRules": []
+    },
+    "inferredReason": [
+      "read-only/reviewer-style agent"
+    ],
+    "criteria": [
+      {
+        "id": "criterion-1",
+        "must": "Return concrete findings with file paths and severity when applicable",
+        "evidence": [
+          "review-findings",
+          "residual-risks"
+        ],
+        "severity": "required"
+      }
+    ],
+    "runtimeChecks": [],
+    "verifyRuns": [],
+    "childReport": {
+      "criteriaSatisfied": [
+        {
+          "id": "criterion-1",
+          "status": "satisfied",
+          "evidence": "Findings with paths below: fix verified against BullMQ v6 source and via green test runs (see commandsRun); the staged-premise discrepancy is flagged as a note."
+        }
+      ],
+      "changedFiles": [
+        "prisma/schema.prisma",
+        "prisma/migrations/20260803135758_postvariant_external_id/migration.sql",
+        "src/domain/post.ts",
+        "src/domain/post.test.ts",
+        "src/server/posts.ts",
+        "src/server/queue.ts",
+        "tests/integration/queue.test.ts"
+      ],
+      "testsAddedOrUpdated": [
+        "tests/integration/queue.test.ts (new regression: retry after failure -> FAILED variant re-enqueues and publishes)",
+        "src/domain/post.test.ts (markVariantPublished clears errorMessage)"
+      ],
+      "commandsRun": [
+        {
+          "command": "git diff 78f0fb9 --cached -- . ':(exclude)pnpm-lock.yaml'",
+          "result": "passed",
+          "summary": "Empty — nothing is staged; used git diff 78f0fb9 (worktree) instead"
+        },
+        {
+          "command": "npx tsc --noEmit -p tsconfig.json",
+          "result": "passed",
+          "summary": "Typecheck clean"
+        },
+        {
+          "command": "npx vitest run src/domain/post.test.ts src/server/queue-domain.test.ts",
+          "result": "passed",
+          "summary": "21/21 unit tests passed"
+        },
+        {
+          "command": "npx vitest run tests/integration/queue.test.ts",
+          "result": "passed",
+          "summary": "15/15 incl. new retry-after-failure regression (real Redis + mock adapter)"
+        },
+        {
+          "command": "npx vitest run tests/integration/api.test.ts",
+          "result": "passed",
+          "summary": "28/28 API tests passed (sync fake publisher, publish endpoint contract intact)"
+        }
+      ],
+      "validationOutput": [
+        "Retry regression test proves FAILED variant with same jobId re-enqueues and reaches PUBLISHED with externalId set",
+        "Reconciler test 'never re-enqueues permanently FAILED variants' still passes — auto-pipeline DRAFT-only rule preserved",
+        "BullMQ 6.0.6 Queue.remove is idempotent (backend.remove returns code; no throw on missing job)"
+      ],
+      "residualRisks": [
+        "remove-then-add applies to every enqueue, not only FAILED retries: a re-publish while the same variant's job is active would drop the in-flight job and re-add (lost DB mark if the platform publish already landed). Mitigated by per-channel concurrency 1 + single user, but the worker 'failed' handler then won't fire for the removed job",
+        "updateVariant resets a variant to DRAFT without clearing externalId — currently unreachable (post-level PUBLISHED gate blocks editing after any variant publishes), but a latent trap if that gate changes",
+        "Spec §8 literal text says '队列自动重试' (queue auto-retry) while the M2 decision makes permanent FAILED wait for explicit user action; the fix follows the documented M2 deviation, but the spec row is ambiguous",
+        "New regression test assumes Instagram is unconnected at suite start; a pre-existing connection from a prior run would make the first enqueue succeed and the test fail spuriously"
+      ],
+      "noStagedFiles": true,
+      "diffSummary": "Fix for BullMQ v6 silently ignoring add() with an existing jobId: enqueuePublish now removes the old job record before re-adding (drop-then-add, matching schedule()). Bundled: persist PublishResult.externalId onto PostVariant (new nullable column + migration), markVariantPublished clears stale errorMessage on success, plus a closed-loop integration regression test and updated unit test.",
+      "reviewFindings": [
+        "note: src/server/queue.ts:118-120 - remove-then-add is correct and honors the M2 explicit-retry decision (commit 507eab5)",
+        "note: src/server/queue.ts:196-203 - autoPublishableVariantIds unchanged (DRAFT only); auto-pipeline never retries FAILED",
+        "note: tests/integration/queue.test.ts:345 - leftover debug console.log('REFRESH-TEST outcome:...') should be removed",
+        "note: git status - the premise 'staged changes' is false; all 6 files + migration dir are unstaged/untracked and must be git add'ed",
+        "note: prisma/migrations/20260803135758_postvariant_external_id/migration.sql - migration exists but is untracked",
+        "no blockers found"
+      ],
+      "manualNotes": "Reviewed as SPEC axis of a smoke-driven bug-fix commit. Diff was pulled from the working tree because git diff --cached is empty. Verified spec quotes: §5 '3 retries with backoff 30s/2m/8m', §8 'Publish 单条失败 | PostCard 红框 + 错误信息 | 队列自动重试'; M2 decision quoted from commit 507eab5 message. ADR 0009 (redirect <30ms, non-blocking interaction writes) untouched. docs/api.md publish contract unchanged. All test suites green."
+    }
+  },
+  "effects": {
+    "fileMutation": {
+      "status": "not-applicable",
+      "expected": false,
+      "attempted": true
+    }
+  },
+  "transcriptPath": "/Users/nicholasl/Documents/build-whatever/SpellPaw/.pi-subagents/artifacts/2f0ef0fa_reviewer_1_transcript.jsonl",
+  "timestamp": 1785766077267
+}

@@ -45,11 +45,12 @@ describe("validateVariantContent", () => {
 });
 
 describe("markVariantPublished", () => {
-  it("moves a variant to PUBLISHED and stamps the timestamp", () => {
+  it("moves a variant to PUBLISHED, stamps the timestamp and clears stale errors", () => {
     const now = new Date("2026-08-03T10:00:00Z");
     const result = markVariantPublished(now);
     expect(result.publishState).toBe("PUBLISHED");
     expect(result.publishedAt).toBe(now);
+    expect(result.errorMessage).toBeNull();
   });
 });
 

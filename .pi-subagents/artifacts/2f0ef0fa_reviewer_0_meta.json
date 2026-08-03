@@ -1,0 +1,174 @@
+{
+  "runId": "2f0ef0fa",
+  "agent": "reviewer",
+  "task": "[Read from: /Users/nicholasl/Documents/build-whatever/SpellPaw/plan.md, /Users/nicholasl/Documents/build-whatever/SpellPaw/progress.md]\n\nYou are the STANDARDS axis of a review for a small bug-fix commit in SpellPaw (smoke-test driven) — staged changes on top of 78f0fb9.\n\nFixed point: 78f0fb9. Diff: git diff 78f0fb9 --cached -- . ':(exclude)pnpm-lock.yaml' (run in /Users/nicholasl/Documents/build-whatever/SpellPaw)\n\nThe change fixes a real bug found by a local smoke test: BullMQ v6 silently ignores add() with an existing jobId, so a FAILED variant could never be re-enqueued for retry. Fix = remove-then-add in enqueuePublish. Also: PostVariant.externalId column (migration postvariant_external_id) + write-through of the publish result id; markVariantPublished now clears errorMessage; a regression test simulates fail→connect→retry→published; a header comment warns not to run queue tests while a dev server is up (its workers steal jobs).\n\nStandards sources: AGENTS.md, docs/agents/*, CONTEXT.md (Token Refresh, publish state semantics: FAILED is terminal until explicit retry — this fix makes explicit retry actually work), the M2-era queue semantics comments in src/server/queue.ts (schedule 'drop-then-add' rule — does the new remove-then-add align or conflict with cancelSchedule's job cleanup?), and the fixed smell baseline (Fowler ch.3): Mysterious Name, Duplicated Code, Feature Envy, Data Clumps, Primitive Obsession, Repeated Switches, Shotgun Surgery, Divergent Change, Speculative Generality, Message Chains, Middle Man, Refused Bequest.\n\nScrutinize: queue.ts remove-then-add (race with the reconciler enqueueing the same variant concurrently? remove() on a job being processed returns 0 — is the add still safe? does remove() on a never-existing job throw?), posts.ts externalId write-through (placement after publish, before markVariantPublished — atomicity if update fails mid-way), domain/post.ts markVariantPublished errorMessage: null (does any UI rely on errorMessage surviving a republish? does markVariantFailed→markVariantPublished round-trip clear it correctly?), migration correctness (nullable, no backfill), the new regression test (does it prove re-enqueue? is the MockAdapter connect dance in the test faithful to the real OAuth flow?), the header warning comment, and whether the test-suite flakiness root cause (dev workers stealing jobs) is fully documented.\n\nBrief: per-file — (a) documented-standard violations (cite), (b) smells (name + quote), (c) doc/code gaps. Hard vs judgement. Under 300 words.",
+  "exitCode": 0,
+  "usage": {
+    "input": 27605,
+    "output": 15554,
+    "cacheRead": 800512,
+    "cacheWrite": 0,
+    "cost": 0.010461253600000001,
+    "turns": 31
+  },
+  "model": "deepseek/deepseek-v4-flash:high",
+  "attemptedModels": [
+    "deepseek/deepseek-v4-flash:high"
+  ],
+  "modelAttempts": [
+    {
+      "model": "deepseek/deepseek-v4-flash:high",
+      "success": true,
+      "exitCode": 0,
+      "usage": {
+        "input": 27605,
+        "output": 15554,
+        "cacheRead": 800512,
+        "cacheWrite": 0,
+        "cost": 0.010461253600000001,
+        "turns": 31
+      }
+    }
+  ],
+  "durationMs": 178870,
+  "toolCount": 46,
+  "launchContractDigest": "5072741f0689cab838a30ed06f893266a59357cc9573e763c580a26dd94b740d",
+  "launchResolvedExtensions": {
+    "version": 1,
+    "source": "launch-resolved",
+    "disableAmbientExtensions": false,
+    "runtime": [
+      "sha256:9af91292ea4e4f50"
+    ],
+    "configured": [],
+    "effective": [
+      "sha256:9af91292ea4e4f50"
+    ],
+    "omitted": {
+      "runtime": 0,
+      "configured": 0,
+      "effective": 0
+    }
+  },
+  "acceptance": {
+    "status": "attested",
+    "evidenceStatus": "attested",
+    "explicit": false,
+    "effectiveAcceptance": {
+      "level": "attested",
+      "explicit": false,
+      "inferredReason": [
+        "read-only/reviewer-style agent"
+      ],
+      "criteria": [
+        {
+          "id": "criterion-1",
+          "must": "Return concrete findings with file paths and severity when applicable",
+          "evidence": [
+            "review-findings",
+            "residual-risks"
+          ],
+          "severity": "required"
+        }
+      ],
+      "evidence": [
+        "review-findings",
+        "residual-risks"
+      ],
+      "verify": [],
+      "stopRules": []
+    },
+    "inferredReason": [
+      "read-only/reviewer-style agent"
+    ],
+    "criteria": [
+      {
+        "id": "criterion-1",
+        "must": "Return concrete findings with file paths and severity when applicable",
+        "evidence": [
+          "review-findings",
+          "residual-risks"
+        ],
+        "severity": "required"
+      }
+    ],
+    "runtimeChecks": [],
+    "verifyRuns": [],
+    "childReport": {
+      "criteriaSatisfied": [
+        {
+          "id": "criterion-1",
+          "status": "satisfied",
+          "evidence": "Reviewed working-tree diff vs 78f0fb9 (6 files) with per-file findings, file paths, and severities; verified BullMQ 6.0.6 source for remove()/duplicate-add semantics; ran domain tests (14/14), full queue integration suite (15/15), and tsc --noEmit (clean)."
+        }
+      ],
+      "changedFiles": [
+        "prisma/schema.prisma",
+        "prisma/migrations/20260803135758_postvariant_external_id/migration.sql",
+        "src/domain/post.ts",
+        "src/domain/post.test.ts",
+        "src/server/posts.ts",
+        "src/server/queue.ts",
+        "tests/integration/queue.test.ts"
+      ],
+      "testsAddedOrUpdated": [
+        "tests/integration/queue.test.ts",
+        "src/domain/post.test.ts"
+      ],
+      "commandsRun": [
+        {
+          "command": "git diff 78f0fb9 --cached",
+          "result": "not-run",
+          "summary": "Exit 0 but empty output — nothing is staged; reviewed git diff 78f0fb9 (working tree) instead"
+        },
+        {
+          "command": "npx vitest run src/domain/post.test.ts",
+          "result": "passed",
+          "summary": "14/14 tests pass; markVariantPublished clears errorMessage assertion covered"
+        },
+        {
+          "command": "npx vitest run tests/integration/queue.test.ts",
+          "result": "passed",
+          "summary": "15/15 pass incl. new retry regression (5s); Redis/DB containers up, no dev server on :3000"
+        },
+        {
+          "command": "npx tsc --noEmit",
+          "result": "passed",
+          "summary": "No type errors; Pick<> return-type change propagates cleanly"
+        }
+      ],
+      "validationOutput": [
+        "BullMQ 6.0.6 verified: Queue.remove(jobId) returns 0 for missing/locked jobs (no throw); add() with existing jobId returns existing job without re-enqueue (addStandardJob-9.js handleDuplicatedJob) — fix premise confirmed",
+        "Migration matches schema.prisma: nullable TEXT externalId, no backfill needed"
+      ],
+      "residualRisks": [
+        "remove-then-add is non-atomic; remove() on an in-flight (locked) job returns 0, then add() is silently ignored, so enqueuePublish reports queued:1 with nothing newly queued (only if retried while same variant's job is active)",
+        "External-id write failure after platform publish → outcome 'failed' → BullMQ retry → duplicate platform post (pre-existing publish-then-update pattern)",
+        "Regression test connect dance bypasses real /api/channels/instagram/callback (no PKCE/state verification); proves re-enqueue, not the real OAuth path",
+        "Dev-worker flakiness documented only as a header comment in queue.test.ts, not in README/docs",
+        "Debug console.log left in token-refresh test (queue.test.ts:345)"
+      ],
+      "noStagedFiles": true,
+      "diffSummary": "Fixes BullMQ v6 silent add() ignore on existing jobId via remove-then-add in enqueuePublish; adds PostVariant.externalId column + write-through of publish result id; markVariantPublished clears errorMessage; new retry regression test; header warning about dev workers stealing queue jobs",
+      "reviewFindings": [
+        "no blockers in code — fix is correct, verified against BullMQ 6.0.6 source and passing tests",
+        "note: queue.ts:118-124 - remove-then-add on an active job returns 0 and add is silently ignored; queued count can over-report (low likelihood)",
+        "note: queue.ts:120 - duplicated drop-then-add pattern vs schedule(); could extract replaceJob helper",
+        "note: tests/integration/queue.test.ts:345 - stray console.log debug output in existing refresh test",
+        "note: tests/integration/queue.test.ts:472-478 - mock connect dance not faithful to real OAuth (bypasses callback route/PKCE); odd '.x' state suffix",
+        "note: prisma/migrations/20260803135758_postvariant_external_id/ is untracked and nothing is staged — parent must stage it or the migration ships without the schema change",
+        "note: flakiness root cause (dev workers stealing jobs) documented only in test header comment"
+      ],
+      "manualNotes": "Task said 'staged changes' but git status shows all 6 modified files unstaged and the new migration untracked; reviewed working-tree diff vs 78f0fb9 instead. Verified BullMQ 6.0.6 behaviors from installed source (queue.js remove docstring; addStandardJob-9.js:488-491 duplicate handling)."
+    }
+  },
+  "effects": {
+    "fileMutation": {
+      "status": "not-applicable",
+      "expected": false,
+      "attempted": true
+    }
+  },
+  "transcriptPath": "/Users/nicholasl/Documents/build-whatever/SpellPaw/.pi-subagents/artifacts/2f0ef0fa_reviewer_0_transcript.jsonl",
+  "timestamp": 1785766056501
+}

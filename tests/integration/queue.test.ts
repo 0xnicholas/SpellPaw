@@ -1,5 +1,7 @@
 // Real-queue integration tests: BullMQ + Redis + workers end-to-end.
 // Requires the dockerized Redis (docker compose up -d). Fails loudly if absent.
+// IMPORTANT: do NOT run while a dev server is up — its instrumentation workers
+// share the same Redis queues and will steal test jobs, causing timeouts.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Queue } from "bullmq";
 import { createPrismaClient } from "@/lib/db";
@@ -430,5 +432,42 @@ describe("publish-time token refresh (X offline.access)", () => {
     const variant = await prisma.postVariant.findUniqueOrThrow({ where: { id: post.variants[0].id } });
     expect(variant.publishState).toBe("FAILED");
     expect(variant.errorMessage).toContain("invalid_grant");
+  });
+});
+
+describe("retry after failure (regression: BullMQ v6 ignores same-jobId add)", () => {
+  it("re-enqueues a FAILED variant after the channel connects", async () => {
+    // Smoke scenario: publish before connecting → FAILED; connect; retry →
+    // the variant must actually re-enter the queue and publish. Instagram is
+    // never connected in beforeAll (linkedin/twitter already are).
+    const post = await createPost("instagram", "retry me");
+    const workspace = await prisma.workspace.findFirstOrThrow({ where: { accountId: ACCOUNT } });
+    const channel = await prisma.channel.findUniqueOrThrow({ where: { slug: "instagram" } });
+    // No connection for this workspace+channel yet → permanent failure.
+    await publisher.enqueuePublish(post.id, post.workspaceId, post.variants.map((v) => v.id));
+    await waitFor(async () => (await variantState(post.variants[0].id)) === "FAILED");
+
+    // Connect (mock one-hop OAuth: buildAuthUrl returns a self-completing URL).
+    const mock = new MockAdapter("instagram");
+    const authUrl = mock.buildAuthUrl(
+      `${workspace.id}.x`,
+      "http://localhost:3000/api/channels/instagram/callback",
+    );
+    const code = new URL(authUrl).searchParams.get("code") ?? "";
+    const tokens = await mock.exchangeCode(code);
+    await prisma.oAuthConnection.create({
+      data: {
+        workspaceId: workspace.id,
+        channelId: channel.id,
+        accessToken: encryptString(tokens.accessToken, KEY),
+      },
+    });
+
+    // Retry — the same variant id, now with a live connection.
+    await publisher.enqueuePublish(post.id, post.workspaceId, post.variants.map((v) => v.id));
+    await waitFor(async () => (await variantState(post.variants[0].id)) === "PUBLISHED");
+    const variant = await prisma.postVariant.findUniqueOrThrow({ where: { id: post.variants[0].id } });
+    expect(variant.publishState).toBe("PUBLISHED");
+    expect(variant.externalId).toBeTruthy();
   });
 });

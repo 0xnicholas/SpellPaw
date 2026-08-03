@@ -232,10 +232,10 @@ export async function publishVariantToChannel(
       });
       tokens = rotated;
     }
-    await adapter.publish(variant.content, tokens);
+    const result = await adapter.publish(variant.content, tokens);
     await prisma.postVariant.update({
       where: { id: variant.id },
-      data: markVariantPublished(new Date()),
+      data: { ...markVariantPublished(new Date()), externalId: result.externalId },
     });
     return { state: "published" };
   } catch (err) {

@@ -1,0 +1,182 @@
+{
+  "runId": "212f3bc3",
+  "agent": "reviewer",
+  "task": "You are the STANDARDS axis of a review for a small bug-fix commit in SpellPaw (smoke-test driven) — working-tree changes on top of 78f0fb9 (nothing staged yet, read `git diff 78f0fb9 -- . ':(exclude)pnpm-lock.yaml'` in /Users/nicholasl/Documents/build-whatever/SpellPaw).\n\nThe change fixes a real bug found by a local smoke test: BullMQ v6 silently ignores add() with an existing jobId, so a FAILED variant could never be re-enqueued for retry. Fix = remove-then-add in enqueuePublish (src/server/queue.ts). Also: PostVariant.externalId column (migration postvariant_external_id, src/generated not checked in — generated client lives in src/generated and is gitignored) + write-through of the publish result id (src/server/posts.ts); markVariantPublished now clears errorMessage (src/domain/post.ts); a regression test simulates fail→connect→retry→published (tests/integration/queue.test.ts); a header comment warns not to run queue tests while a dev server is up (its instrumentation workers share the Redis queues and steal jobs, causing timeouts — this was the observed flakiness root cause).\n\nStandards sources: AGENTS.md, docs/agents/*, CONTEXT.md (publish state semantics: FAILED is terminal until explicit retry; Token Refresh term), the queue semantics comments in src/server/queue.ts (schedule 'drop-then-add' rule — does remove-then-add align?), and the fixed smell baseline (Fowler ch.3): Mysterious Name, Duplicated Code, Feature Envy, Data Clumps, Primitive Obsession, Repeated Switches, Shotgun Surgery, Divergent Change, Speculative Generality, Message Chains, Middle Man, Refused Bequest.\n\nScrutinize: queue.ts remove-then-add (remove() returns 0 when a job is locked/being processed — is the subsequent add still safe? is remove() on a never-existing job a no-op?), posts.ts externalId write-through (placement after publish, before markVariantPublished — what if the update throws mid-way; is the variant left in a weird state?), domain/post.ts markVariantPublished errorMessage: null (any UI/MCP consumer that would break on a cleared message?), migration correctness (nullable, no backfill, applies from scratch — check the migration SQL file), the new regression test (does it faithfully exercise fail→connect→retry→published? is the MockAdapter connect dance reasonable given MockAdapter.exchangeCode ignores the verifier?), the header warning comment (accurate? sufficient?), and any leftover debug code.\n\nBrief: per file — (a) documented-standard violations (cite), (b) smells (name + quote), (c) doc/code gaps. Hard vs judgement. Under 300 words.",
+  "exitCode": 0,
+  "usage": {
+    "input": 45533,
+    "output": 17141,
+    "cacheRead": 1389952,
+    "cacheWrite": 0,
+    "cost": 0.015065965599999998,
+    "turns": 32
+  },
+  "model": "deepseek/deepseek-v4-flash:high",
+  "attemptedModels": [
+    "deepseek/deepseek-v4-flash:high"
+  ],
+  "modelAttempts": [
+    {
+      "model": "deepseek/deepseek-v4-flash:high",
+      "success": true,
+      "exitCode": 0,
+      "usage": {
+        "input": 45533,
+        "output": 17141,
+        "cacheRead": 1389952,
+        "cacheWrite": 0,
+        "cost": 0.015065965599999998,
+        "turns": 32
+      }
+    }
+  ],
+  "durationMs": 198450,
+  "toolCount": 46,
+  "launchContractDigest": "f58484735e2b5a6493ecb97fd04f74ad39effb7deac8e42d4cadbe5d3ea9e239",
+  "launchResolvedExtensions": {
+    "version": 1,
+    "source": "launch-resolved",
+    "disableAmbientExtensions": false,
+    "runtime": [
+      "sha256:9af91292ea4e4f50"
+    ],
+    "configured": [],
+    "effective": [
+      "sha256:9af91292ea4e4f50"
+    ],
+    "omitted": {
+      "runtime": 0,
+      "configured": 0,
+      "effective": 0
+    }
+  },
+  "acceptance": {
+    "status": "attested",
+    "evidenceStatus": "attested",
+    "explicit": false,
+    "effectiveAcceptance": {
+      "level": "attested",
+      "explicit": false,
+      "inferredReason": [
+        "read-only/reviewer-style agent"
+      ],
+      "criteria": [
+        {
+          "id": "criterion-1",
+          "must": "Return concrete findings with file paths and severity when applicable",
+          "evidence": [
+            "review-findings",
+            "residual-risks"
+          ],
+          "severity": "required"
+        }
+      ],
+      "evidence": [
+        "review-findings",
+        "residual-risks"
+      ],
+      "verify": [],
+      "stopRules": []
+    },
+    "inferredReason": [
+      "read-only/reviewer-style agent"
+    ],
+    "criteria": [
+      {
+        "id": "criterion-1",
+        "must": "Return concrete findings with file paths and severity when applicable",
+        "evidence": [
+          "review-findings",
+          "residual-risks"
+        ],
+        "severity": "required"
+      }
+    ],
+    "runtimeChecks": [],
+    "verifyRuns": [],
+    "childReport": {
+      "criteriaSatisfied": [
+        {
+          "id": "criterion-1",
+          "status": "satisfied",
+          "evidence": "Concrete findings per file with paths: queue.ts:117-121 remove-then-add safe (verified in bullmq Lua removeJob-2.lua/addStandardJob-9.lua), posts.ts:238 atomic single-update write-through, domain/post.ts errorMessage:null null-safe for PostList.tsx:130 and mcp/server.ts:317, migration.sql nullable/no-backfill/correct ordering, queue.test.ts regression passed 1/1 and 15/15 suite; header comment verified accurate; no debug code; two judgement-level residual risks recorded."
+        }
+      ],
+      "changedFiles": [
+        "prisma/schema.prisma",
+        "prisma/migrations/20260803135758_postvariant_external_id/migration.sql",
+        "src/domain/post.test.ts",
+        "src/domain/post.ts",
+        "src/server/posts.ts",
+        "src/server/queue.ts",
+        "tests/integration/queue.test.ts"
+      ],
+      "testsAddedOrUpdated": [
+        "tests/integration/queue.test.ts (new regression: retry after failure)",
+        "src/domain/post.test.ts (markVariantPublished clears errorMessage)"
+      ],
+      "commandsRun": [
+        {
+          "command": "git diff 78f0fb9 -- . ':(exclude)pnpm-lock.yaml'",
+          "result": "passed",
+          "summary": "Reviewed full diff; 57 insertions / 6 deletions across 6 files"
+        },
+        {
+          "command": "pnpm typecheck",
+          "result": "passed",
+          "summary": "tsc --noEmit clean"
+        },
+        {
+          "command": "pnpm vitest run src/domain/post.test.ts",
+          "result": "passed",
+          "summary": "14/14 domain tests pass"
+        },
+        {
+          "command": "pnpm vitest run tests/integration/queue.test.ts -t 'retry after failure'",
+          "result": "passed",
+          "summary": "New regression test passes (Redis + test DB up, no dev server on :3000)"
+        },
+        {
+          "command": "pnpm vitest run tests/integration/queue.test.ts",
+          "result": "passed",
+          "summary": "Full queue suite 15/15 pass"
+        },
+        {
+          "command": "grep bullmq dist Lua (removeJob-2, addStandardJob-9, handleDuplicatedJob, isLocked)",
+          "result": "passed",
+          "summary": "Verified remove() semantics (1 unlocked / 0 locked / no-op missing) and add() silently-ignores-existing-id"
+        }
+      ],
+      "validationOutput": [
+        "remove(jobId) returns 0 for locked/active jobs without throwing; add() with existing jobId returns existing id and enqueues nothing — fix approach correct; add after remove is safe in all job states",
+        "externalId write-through is one atomic prisma.postVariant.update; no partial-state window on throw (duplicate-publish-on-DB-failure is pre-existing)",
+        "errorMessage:null is null-safe for all consumers (UI badge and MCP tool pass-through)",
+        "Migration matches schema.prisma (nullable String?), no backfill required, correctly ordered"
+      ],
+      "residualRisks": [
+        "Race (low): retry while the old FAILED job is still active/locked makes remove() return 0 and add() be ignored — variant stays FAILED until the user retries again; production and new test both exposed to a ~ms window (test polls at 100ms)",
+        "Test's connect dance bypasses the real /api/channels/instagram/callback route (MockAdapter.exchangeCode ignores verifier) — acceptable for queue-scope smoke, but OAuth callback path itself stays uncovered",
+        "remove-then-add adds one extra Redis round-trip per enqueued job, even for first-time enqueues (harmless no-op)",
+        "queue.test.ts header warning is advisory only — not programmatically enforced; a future dev-server run could still reintroduce flakiness"
+      ],
+      "noStagedFiles": true,
+      "diffSummary": "Fixes BullMQ v6 silently-ignoring same-jobId add() on FAILED-variant retry via remove-then-add in enqueuePublish; adds PostVariant.externalId (migration + write-through of adapter publish result id); markVariantPublished now clears errorMessage; adds fail→connect→retry→published regression test and a header warning against running queue tests alongside a dev server",
+      "reviewFindings": [
+        "no blockers: queue.ts:117-121 remove-then-add verified safe against BullMQ v6 Lua semantics and consistent with schedule() drop-then-add",
+        "note: queue.ts:117-121 mild Duplicated Code — drop-then-add pattern and publishJobId(v.id) computed twice (opts + remove)",
+        "note: queue.test.ts:455-467 narrow flake race — remove() returns 0 while the just-FAILED job is still active, add() ignored, waitFor can time out; suggest also waiting for job to leave active state before retry",
+        "note: posts.ts:235-239 pre-existing duplicate-publish risk if the DB update throws after platform publish (unchanged by this fix)"
+      ],
+      "manualNotes": "Verified against live Redis (PONG) and test DB; no dev server was running on :3000 during test runs, satisfying the new header warning's precondition. Untracked .pi-subagents/artifacts/* are orchestrator scratch, not part of the change."
+    }
+  },
+  "effects": {
+    "fileMutation": {
+      "status": "not-applicable",
+      "expected": false,
+      "attempted": true
+    }
+  },
+  "transcriptPath": "/Users/nicholasl/Documents/build-whatever/SpellPaw/.pi-subagents/artifacts/212f3bc3_reviewer_0_transcript.jsonl",
+  "timestamp": 1785766286470
+}

@@ -145,6 +145,8 @@ model PostVariant {
   charCount    Int          @default(0)
   publishState PublishState @default(DRAFT)
   publishedAt  DateTime?
+  // Platform-side id of the published content (e.g. the tweet id on X).
+  externalId   String?
   errorMessage String?
 
   post      Post        @relation(fields: [postId], references: [id])
