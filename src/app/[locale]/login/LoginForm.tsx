@@ -37,7 +37,10 @@ export function LoginForm({ devMode }: { devMode: boolean }) {
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
     setStatus("sending");
-    const res = await signIn("email", { email, redirect: false });
+    // callbackUrl: "/" — the link lands on the landing page, which bounces
+    // signed-in users into the workspace. Keeping the login page as the
+    // callback would dump the user back on the form after a successful sign-in.
+    const res = await signIn("email", { email, redirect: false, callbackUrl: "/" });
     setStatus(res?.ok === false ? "error" : "sent");
   }
 
