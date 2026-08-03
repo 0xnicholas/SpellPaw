@@ -15,8 +15,9 @@
     "submit": "发送登录链接",
     "sentTitle": "查收你的邮箱",
     "sentBody": "登录链接已发送到 {email}。",
-    "devMode": "开发模式已开启——魔法链接会打印在服务器控制台（pnpm dev）。",
-    "error": "出错了，请重试。"
+    "devMode": "开发模式已开启——登录链接如下。",
+    "error": "出错了，请重试。",
+    "devLinkCta": "点击登录"
   },
   "content": {
     "title": "内容",

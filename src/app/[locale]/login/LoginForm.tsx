@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useTranslations } from "next-intl";
 
@@ -8,6 +8,31 @@ export function LoginForm({ devMode }: { devMode: boolean }) {
   const t = useTranslations("login");
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [devLink, setDevLink] = useState<string | null>(null);
+
+  // Dev mode: no real email is sent — poll the dev-only endpoint for the
+  // magic link that Auth.js printed to the server log, then show it inline.
+  useEffect(() => {
+    if (status !== "sent" || !devMode || !email || devLink) return;
+    let cancelled = false;
+    const poll = async () => {
+      for (let i = 0; i < 10 && !cancelled; i++) {
+        const res = await fetch(`/api/dev/magic-link?email=${encodeURIComponent(email)}`);
+        if (res.ok) {
+          const body = (await res.json()) as { link: string | null };
+          if (body.link) {
+            if (!cancelled) setDevLink(body.link);
+            return;
+          }
+        }
+        await new Promise((r) => setTimeout(r, 600));
+      }
+    };
+    void poll();
+    return () => {
+      cancelled = true;
+    };
+  }, [status, devMode, email, devLink]);
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -20,13 +45,23 @@ export function LoginForm({ devMode }: { devMode: boolean }) {
     return (
       <div className="space-y-3">
         <p className="text-sm text-zinc-700">{t("sentTitle")}</p>
-        <p className="text-sm text-zinc-700">
-          {t("sentBody", { email })}
-        </p>
-        {devMode && (
-          <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            {t("devMode")}
-          </p>
+        {devMode ? (
+          <>
+            {devLink ? (
+              <a
+                href={devLink}
+                className="block rounded-lg bg-zinc-900 px-4 py-3 text-center text-sm font-medium text-white hover:bg-zinc-700"
+              >
+                {t("devLinkCta")}
+              </a>
+            ) : (
+              <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                {t("devMode")}
+              </p>
+            )}
+          </>
+        ) : (
+          <p className="text-sm text-zinc-700">{t("sentBody", { email })}</p>
         )}
       </div>
     );

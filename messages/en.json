@@ -15,8 +15,9 @@
     "submit": "Send sign-in link",
     "sentTitle": "Check your inbox",
     "sentBody": "Check {email} for your sign-in link.",
-    "devMode": "Dev mode is on — the magic link is printed to the server console (pnpm dev).",
-    "error": "Something went wrong — try again."
+    "devMode": "Dev mode is on — your sign-in link is shown below.",
+    "error": "Something went wrong — try again.",
+    "devLinkCta": "Click to sign in"
   },
   "content": {
     "title": "Content",
