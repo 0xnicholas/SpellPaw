@@ -1,11 +1,13 @@
 // MCP Server Phase 1 (spec §3): 5 modules / 14 tools, embedded in-process
 // (ADR-0010). Schedule tools go through the real Publisher (queue); contact
-// tools never touch profile_* (PII) columns.
+// tools never touch profile_* (PII) columns. M6 adds the inbox module — the
+// deliberate PII exception (ADR-0014), gated by Workspace.mcpInboxAccess.
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { getCalendarEvents, createPost, updateVariant, schedulePost, cancelSchedule, listPosts } from "../posts";
 import { NON_PII_SELECT } from "../contact-select";
+import { sendReply } from "../inbox";
 import type { Publisher } from "../publisher";
 import type { RateLimiter } from "@/lib/rate-limit";
 import { DAY_MS } from "@/lib/time";
@@ -40,7 +42,7 @@ const variantInput = z.object({
 
 export function createMcpServer(deps: McpDeps): McpServer {
   const server = new McpServer(
-    { name: "spellpaw", version: "0.3.0" },
+    { name: "spellpaw", version: "0.4.0" },
     { capabilities: { tools: {} } },
   );
 
@@ -69,6 +71,24 @@ export function createMcpServer(deps: McpDeps): McpServer {
     if (workspace?.mcpPublishApproval) {
       throw new Error(
         "publishing via MCP requires approval — enable the trust toggle in Settings, or use the web app",
+      );
+    }
+  }
+
+  /**
+   * Inbox gate (ADR-0014): the PII exception domain is OFF by default — while
+   * Workspace.mcpInboxAccess is false (the default), inbox.* tools reject so
+   * agents can never silently read private conversations. Runs before the
+   * write cap so gated calls never burn daily quota.
+   */
+  async function checkInboxAccess(workspaceId: string): Promise<void> {
+    const workspace = await deps.prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { mcpInboxAccess: true },
+    });
+    if (!workspace?.mcpInboxAccess) {
+      throw new Error(
+        "inbox access via MCP requires the trust toggle in Settings (mcpInboxAccess) — conversation content is private data",
       );
     }
   }
@@ -405,6 +425,139 @@ export function createMcpServer(deps: McpDeps): McpServer {
       inputSchema: {},
     },
     async () => ok({ viewers: [] }),
+  );
+
+  // --- Inbox module (3 tools) — PII exception domain (ADR-0014) ---
+  // Unlike contact.*, these return full conversation content + partner
+  // identity; gated by Workspace.mcpInboxAccess (default OFF).
+
+  server.registerTool(
+    "inbox.list",
+    {
+      title: "List inbox threads",
+      description:
+        "Conversation threads (contact × channel) with the latest message and unread counts. Requires the mcpInboxAccess trust toggle. Returns conversation content — private data.",
+      inputSchema: {},
+    },
+    async (_args, extra) => {
+      const workspaceId = ws(extra);
+      await checkInboxAccess(workspaceId);
+      const [conversations, readStates] = await Promise.all([
+        deps.prisma.conversation.findMany({
+          where: { workspaceId },
+          include: {
+            contact: {
+              select: {
+                id: true,
+                profileName: true,
+                profileSocialHandle: true,
+                profileSourceChannel: true,
+                stateLifecycleStage: true,
+              },
+            },
+            channel: { select: { slug: true, name: true } },
+          },
+          orderBy: { timestamp: "desc" },
+        }),
+        deps.prisma.inboxReadState.findMany({ where: { workspaceId } }),
+      ]);
+      const lastRead = new Map(
+        readStates.map((r) => [`${r.contactId}:${r.channelId}`, r.lastReadAt]),
+      );
+      const byThread = new Map<string, (typeof conversations)[number]>();
+      for (const c of conversations) {
+        const key = `${c.contactId}:${c.channelId}`;
+        if (!byThread.has(key)) byThread.set(key, c); // first = latest (desc)
+      }
+      const threads = Array.from(byThread.entries()).map(([key, latest]) => ({
+        threadId: `${latest.contactId}:${latest.channel.slug}`,
+        contactId: latest.contactId,
+        contactName: latest.contact.profileName,
+        contactHandle: latest.contact.profileSocialHandle,
+        lifecycleStage: latest.contact.stateLifecycleStage,
+        channelSlug: latest.channel.slug,
+        lastMessage: {
+          direction: latest.direction,
+          content: latest.content,
+          timestamp: latest.timestamp.toISOString(),
+        },
+        unread:
+          (() => {
+            const readAt = lastRead.get(key);
+            return (
+              latest.direction === "INBOUND" &&
+              (!readAt || latest.timestamp > readAt)
+            );
+          })(),
+      }));
+      return ok({ threads });
+    },
+  );
+
+  server.registerTool(
+    "inbox.read",
+    {
+      title: "Read a conversation thread",
+      description:
+        "Full message history for one contact on one channel (oldest first). Requires the mcpInboxAccess trust toggle. Returns conversation content — private data.",
+      inputSchema: {
+        contactId: z.string().min(1),
+        channelSlug: z.string().min(1),
+      },
+    },
+    async (args, extra) => {
+      const workspaceId = ws(extra);
+      await checkInboxAccess(workspaceId);
+      const channel = await deps.prisma.channel.findUnique({
+        where: { slug: args.channelSlug },
+      });
+      if (!channel) throw new Error("channel not found");
+      const messages = await deps.prisma.conversation.findMany({
+        where: { workspaceId, contactId: args.contactId, channelId: channel.id },
+        orderBy: { timestamp: "asc" },
+        select: {
+          id: true,
+          direction: true,
+          content: true,
+          deliveryState: true,
+          errorMessage: true,
+          timestamp: true,
+        },
+      });
+      return ok({
+        threadId: `${args.contactId}:${args.channelSlug}`,
+        messages: messages.map((m) => ({
+          ...m,
+          timestamp: m.timestamp.toISOString(),
+        })),
+      });
+    },
+  );
+
+  server.registerTool(
+    "inbox.reply",
+    {
+      title: "Reply to a conversation",
+      description:
+        "Send a reply to an existing thread (contact × channel). Enqueued — the platform call is async. Requires the mcpInboxAccess trust toggle; consumes daily write quota.",
+      inputSchema: {
+        contactId: z.string().min(1),
+        channelSlug: z.string().min(1),
+        content: z.string().min(1).max(2000),
+      },
+    },
+    async (args, extra) => {
+      const workspaceId = ws(extra);
+      await checkInboxAccess(workspaceId);
+      await checkWriteCap(workspaceId);
+      const result = await sendReply(deps.prisma, deps.publisher, {
+        workspaceId,
+        contactId: args.contactId,
+        channelSlug: args.channelSlug,
+        content: args.content,
+      });
+      return ok({ conversationId: result.conversationId, state: result.state });
+    },
   );
 
   return server;

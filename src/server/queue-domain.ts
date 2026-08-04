@@ -59,3 +59,26 @@ export function mockCommentDelayMs(now: number = Date.now()): number {
 export function mockCommentExternalId(variantId: string): string {
   return `mock:comment:${variantId}`;
 }
+
+// --- M6 outbound replies (ADR-0013) ----------------------------------------
+
+/** One reply queue per channel slug — same isolation rationale as publish. */
+export function replyQueueName(channelSlug: string): string {
+  return `reply-${channelSlug}`;
+}
+
+/** One reply job per outbound Conversation row (idempotent, never duplicates). */
+export function replyJobId(conversationId: string): string {
+  return `reply-${conversationId}`;
+}
+
+export interface ReplyJobData {
+  conversationId: string;
+  workspaceId: string;
+  channelSlug: string;
+  content: string;
+  /** Platform id of the message being replied to (the latest inbound row). */
+  replyToExternalId: string;
+  /** Platform id of the originating post when replying to a comment chain. */
+  postExternalId?: string | null;
+}

@@ -20,6 +20,7 @@ const noopPublisher: Publisher = {
   cancelSchedule: async () => {},
   getVariantQueueState: async () => null,
   enqueueMockComment: async () => {},
+  enqueueReply: async () => {},
   close: async () => {},
 };
 
@@ -129,13 +130,13 @@ describe("MCP auth", () => {
 });
 
 describe("MCP tools", () => {
-  it("exposes the full 5-module / 14-tool surface", async () => {
+  it("exposes the full 6-module / 17-tool surface", async () => {
     const { token } = await mintApiToken(prisma, WS, "test");
     const client = new McpClient(makeApp(), token);
     await client.initialize();
     const { result } = await client.call<{ tools: Array<{ name: string }> }>(2, "tools/list");
     const names = result?.tools.map((t) => t.name) ?? [];
-    expect(names).toHaveLength(14);
+    expect(names).toHaveLength(17);
     for (const expected of [
       "post.create_draft",
       "post.list",
@@ -151,6 +152,9 @@ describe("MCP tools", () => {
       "contact.list",
       "contact.get",
       "contact.repeat_viewers",
+      "inbox.list",
+      "inbox.read",
+      "inbox.reply",
     ]) {
       expect(names).toContain(expected);
     }
@@ -319,5 +323,50 @@ describe("MCP tools", () => {
       arguments: { variants: [] }, // min 1
     });
     expect(res.result?.isError).toBe(true);
+  });
+});
+
+describe("MCP inbox module (ADR-0014 PII exception)", () => {
+  it("is gated off by default — inbox tools reject until the trust toggle is on", async () => {
+    await prisma.workspace.update({ where: { id: WS }, data: { mcpInboxAccess: false } });
+    const { token } = await mintApiToken(prisma, WS, "test");
+    const client = new McpClient(makeApp(), token);
+    await client.initialize();
+
+    const gated = await client.call<{ content?: Array<{ text?: string }>; isError?: boolean }>(2, "tools/call", {
+      name: "inbox.list",
+      arguments: {},
+    });
+    expect(gated.result?.isError).toBe(true);
+    expect(gated.result?.content?.[0]?.text ?? "").toContain("trust toggle");
+  });
+
+  it("works when mcpInboxAccess is enabled, and replies still respect the write cap", async () => {
+    await prisma.workspace.update({ where: { id: WS }, data: { mcpInboxAccess: true } });
+    const { token } = await mintApiToken(prisma, WS, "test");
+    const client = new McpClient(makeApp(), token);
+    await client.initialize();
+
+    const list = await client.call<{ structuredContent: { threads: unknown[] } }>(2, "tools/call", {
+      name: "inbox.list",
+      arguments: {},
+    });
+    expect(list.result?.structuredContent.threads).toEqual([]);
+
+    // Reply needs an existing thread — the domain error proves the tool path.
+    const contact = await prisma.contact.create({ data: { workspaceId: WS } });
+    const reply = await client.call<{ content?: Array<{ text?: string }>; isError?: boolean }>(3, "tools/call", {
+      name: "inbox.reply",
+      arguments: { contactId: contact.id, channelSlug: "twitter", content: "hello?" },
+    });
+    expect(reply.result?.isError).toBe(true);
+    expect(reply.result?.content?.[0]?.text ?? "").toContain("no inbound message");
+
+    // Read returns message history (empty here) for a real contact+channel.
+    const read = await client.call<{ structuredContent: { messages: unknown[] } }>(4, "tools/call", {
+      name: "inbox.read",
+      arguments: { contactId: contact.id, channelSlug: "twitter" },
+    });
+    expect(read.result?.structuredContent.messages).toEqual([]);
   });
 });

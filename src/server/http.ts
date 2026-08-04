@@ -25,6 +25,7 @@ import { aiRoutes } from "./routes/ai";
 import { contactsRoutes } from "./routes/contacts";
 import { shortLinksRoutes } from "./routes/shortlinks";
 import { analyticsRoutes } from "./routes/analytics";
+import { inboxRoutes } from "./routes/inbox";
 import { mcpRoutes } from "./routes/mcp";
 
 export interface ApiDeps {
@@ -140,6 +141,7 @@ export function createApiApp(deps: ApiDeps): Hono<AppEnv> {
   app.route("/api/contacts", contactsRoutes(routeDeps));
   app.route("/api/shorten", shortLinksRoutes(routeDeps));
   app.route("/api/analytics", analyticsRoutes(routeDeps));
+  app.route("/api/inbox", inboxRoutes(routeDeps));
   app.route("/api/mcp", mcpRoutes(routeDeps));
 
   app.onError((err, c) => {

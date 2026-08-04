@@ -11,7 +11,6 @@
 import { Queue, Worker, type Job } from "bullmq";
 import IORedis from "ioredis";
 import type { PrismaClient } from "@/generated/prisma/client";
-import type { ChannelAdapter } from "@/adapters/channels/types";
 import { markVariantFailed } from "@/domain/post";
 import {
   MOCK_INBOUND_QUEUE,
@@ -21,6 +20,9 @@ import {
   type MockCommentJobData,
   publishJobId,
   publishQueueName,
+  replyJobId,
+  replyQueueName,
+  type ReplyJobData,
   schedulerJobId,
   scheduleDelayMs,
   shouldUseCron,
@@ -32,6 +34,8 @@ import {
   settlePost,
 } from "./posts";
 import type { Post, PostVariant } from "@/generated/prisma/client";
+import type { ChannelAdapter, TokenSet } from "@/adapters/channels/types";
+import { decryptString, encryptString } from "@/lib/crypto";
 import { applyClick, type ClickEvent } from "./interactions";
 import { recordInboundMessage } from "./inbox";
 import { generateMockComment } from "@/adapters/channels/mock";
@@ -80,6 +84,7 @@ export function createPublisher(deps: QueueDeps): Publisher {
   // attempts = 4 → one initial run + 3 retries (spec: "3 retries with backoff").
   const options = deps.jobOptions ?? { attempts: 4, backoffMs: 30_000 };
   const publishQueues = new Map<string, Queue>();
+  const replyQueues = new Map<string, Queue>();
   let schedulerQueue: Queue | null = null;
   let mockInboundQueue: Queue | null = null;
 
@@ -101,6 +106,16 @@ export function createPublisher(deps: QueueDeps): Publisher {
       connection: redis(deps.redisUrl),
     });
     return mockInboundQueue;
+  }
+
+  function replyQueueFor(slug: string): Queue {
+    const existing = replyQueues.get(slug);
+    if (existing) return existing;
+    const queue = new Queue(replyQueueName(slug), {
+      connection: redis(deps.redisUrl),
+    });
+    replyQueues.set(slug, queue);
+    return queue;
   }
 
   return {
@@ -203,9 +218,24 @@ export function createPublisher(deps: QueueDeps): Publisher {
       });
     },
 
+    async enqueueReply(input: ReplyJobData) {
+      // One reply per OUTBOUND row: the job id dedupes on the conversation id.
+      // attempts = 2 → one initial run + ONE transient retry (ADR-0013:
+      // replies never auto-retry more than once — a duplicate reply is worse
+      // than a failed one the user can resend).
+      await replyQueueFor(input.channelSlug).add(replyQueueName(input.channelSlug), input, {
+        jobId: replyJobId(input.conversationId),
+        attempts: 2,
+        backoff: { type: "exponential", delay: 5_000 },
+        removeOnComplete: true,
+        removeOnFail: { age: 86_400 },
+      });
+    },
+
     async close() {
       await Promise.all([
         ...Array.from(publishQueues.values()).map((q) => q.close()),
+        ...Array.from(replyQueues.values()).map((q) => q.close()),
         schedulerQueue?.close(),
         mockInboundQueue?.close(),
       ]);
@@ -363,6 +393,110 @@ async function mockCommentProcessor(
   });
 }
 
+/** Refresh only when we know the token expires and it is stale (5 min margin). */
+function needsRefresh(tokens: TokenSet): boolean {
+  if (!tokens.expiresAt) return false;
+  return tokens.expiresAt.getTime() <= Date.now() + 5 * 60 * 1000;
+}
+
+/**
+ * Reply job (ADR-0013): executes the platform call for one OUTBOUND row and
+ * flips it PENDING → SENT. Permanent problems (no connection, no reply
+ * support, dead refresh grant) mark FAILED and complete without retry;
+ * platform errors rethrow for the ONE transient retry, and the worker's
+ * failed handler marks FAILED after attempts are exhausted.
+ */
+async function replyJobProcessor(
+  deps: WorkerDeps,
+  job: Job<ReplyJobData>,
+): Promise<void> {
+  const { prisma } = deps;
+  const conversation = await prisma.conversation.findUnique({
+    where: { id: job.data.conversationId },
+  });
+  // Deleted or already terminal (SENT, or FAILED by the retry handler).
+  if (!conversation || conversation.deliveryState !== "PENDING") return;
+
+  const connection = await prisma.oAuthConnection.findUnique({
+    where: {
+      workspaceId_channelId: {
+        workspaceId: job.data.workspaceId,
+        channelId: conversation.channelId,
+      },
+    },
+  });
+  if (!connection) {
+    await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { deliveryState: "FAILED", errorMessage: "channel not connected" },
+    });
+    return;
+  }
+  const adapter = deps.adapters[job.data.channelSlug];
+  if (!adapter?.reply) {
+    await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: {
+        deliveryState: "FAILED",
+        errorMessage: `channel ${job.data.channelSlug} does not support replies`,
+      },
+    });
+    return;
+  }
+
+  try {
+    let tokens: TokenSet = {
+      accessToken: decryptString(connection.accessToken, deps.encryptionKey),
+      refreshToken: connection.refreshToken
+        ? decryptString(connection.refreshToken, deps.encryptionKey)
+        : null,
+      expiresAt: connection.expiresAt,
+    };
+    // Same silent-refresh dance as publish (X rotates every 2h). A dead grant
+    // is permanent — a reply can never succeed, so mark FAILED and stop.
+    if (adapter.refresh && needsRefresh(tokens)) {
+      let rotated: TokenSet;
+      try {
+        rotated = await adapter.refresh(tokens);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        await prisma.conversation.update({
+          where: { id: conversation.id },
+          data: {
+            deliveryState: "FAILED",
+            errorMessage: `token refresh failed: ${message} — reconnect the channel in Settings`,
+          },
+        });
+        return;
+      }
+      await prisma.oAuthConnection.update({
+        where: { id: connection.id },
+        data: {
+          accessToken: encryptString(rotated.accessToken, deps.encryptionKey),
+          refreshToken: rotated.refreshToken
+            ? encryptString(rotated.refreshToken, deps.encryptionKey)
+            : null,
+          expiresAt: rotated.expiresAt ?? null,
+        },
+      });
+      tokens = rotated;
+    }
+
+    await adapter.reply(
+      { externalId: job.data.replyToExternalId, postExternalId: job.data.postExternalId },
+      job.data.content,
+      tokens,
+    );
+    await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { deliveryState: "SENT", errorMessage: null },
+    });
+  } catch (err) {
+    // Platform error — transient by default: rethrow for the single retry.
+    throw err;
+  }
+}
+
 export function createWorkers(deps: WorkerDeps): RunningWorkers {
   const connection = redis(deps.redisUrl);
   const publisher = createPublisher(deps);
@@ -413,6 +547,31 @@ export function createWorkers(deps: WorkerDeps): RunningWorkers {
     { connection, concurrency: 2 },
   );
 
+  // Outbound replies (ADR-0013): per-channel queues, concurrency 1 — same
+  // token-refresh serialization rationale as the publish workers.
+  const replyWorkers = Object.keys(deps.adapters).map((slug) => {
+    const worker = new Worker<ReplyJobData>(
+      replyQueueName(slug),
+      (job) => replyJobProcessor(deps, job),
+      { connection, concurrency: 1 },
+    );
+    worker.on("failed", async (job, err) => {
+      if (!job || job.attemptsMade < (job.opts.attempts ?? 1)) return;
+      const conversation = await deps.prisma.conversation.findUnique({
+        where: { id: job.data.conversationId },
+      });
+      if (!conversation || conversation.deliveryState !== "PENDING") return;
+      await deps.prisma.conversation.update({
+        where: { id: conversation.id },
+        data: {
+          deliveryState: "FAILED",
+          errorMessage: err instanceof Error ? err.message : String(err),
+        },
+      });
+    });
+    return worker;
+  });
+
   const reconcilerWorker = new Worker(RECONCILER_JOB, () =>
     reconcilerJobProcessor(deps, publisher),
   { connection, concurrency: 1 });
@@ -438,6 +597,7 @@ export function createWorkers(deps: WorkerDeps): RunningWorkers {
     async close() {
       await Promise.all([
         ...publishWorkers.map((w) => w.close()),
+        ...replyWorkers.map((w) => w.close()),
         schedulerWorker.close(),
         clickWorker.close(),
         mockInboundWorker.close(),

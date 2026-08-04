@@ -5,6 +5,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { ApiError } from "../errors";
 import { NON_PII_SELECT } from "../contact-select";
+import { manuallyActivateContact } from "../inbox";
 import type { AppEnv, RouteDeps } from "./shared";
 
 const listQuerySchema = z.object({
@@ -86,6 +87,18 @@ export function contactsRoutes(deps: RouteDeps): Hono<AppEnv> {
     if (!contact) throw new ApiError(404, "contact not found");
     // Interaction timeline arrives with M4/Phase 2; Persona/State are the payload today.
     return c.json({ contact });
+  });
+
+  // M6: manual activation (ADR-0013 lifecycle) — user asserts product-usage
+  // evidence; records a timeline Event and sets ACTIVATED (sticky).
+  app.post("/:id/activate", async (c) => {
+    const contact = await deps.prisma.contact.findFirst({
+      where: { id: c.req.param("id"), workspaceId: c.get("workspaceId") },
+      select: { id: true },
+    });
+    if (!contact) throw new ApiError(404, "contact not found");
+    await manuallyActivateContact(deps.prisma, c.get("workspaceId"), contact.id);
+    return c.json({ ok: true, contactId: contact.id, stateLifecycleStage: "ACTIVATED" });
   });
 
   return app;

@@ -1,7 +1,7 @@
 // Publisher seam — the API/services talk to this interface; the BullMQ
 // implementation (./queue) is swappable for tests (sync fake).
 import type { PrismaClient } from "@/generated/prisma/client";
-import type { MockCommentJobData } from "./queue-domain";
+import type { MockCommentJobData, ReplyJobData } from "./queue-domain";
 
 /** Non-terminal job state surfaced to the UI; terminal states come from the DB. */
 export type QueueJobState = "queued" | "posting" | "scheduled";
@@ -24,6 +24,12 @@ export interface Publisher {
     input: MockCommentJobData,
     delayMs?: number,
   ): Promise<void>;
+  /**
+   * M6 outbound reply: enqueue the reply job for an OUTBOUND PENDING row.
+   * One transient retry; permanent failures are marked FAILED by the worker
+   * (never retried — avoids duplicate replies).
+   */
+  enqueueReply(input: ReplyJobData): Promise<void>;
   /** Release cached queue connections. */
   close(): Promise<void>;
 }

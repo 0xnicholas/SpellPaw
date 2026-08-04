@@ -24,10 +24,12 @@ const apiTokenSchema = z.object({
 });
 
 // spec §2 — workspace settings surface (M5). name is the display name;
-// mcpPublishApproval is the MCP publish trust toggle (spec §3).
+// mcpPublishApproval is the MCP publish trust toggle (spec §3);
+// mcpInboxAccess is the MCP inbox PII-exception gate (M6, ADR-0014).
 const workspacePatchSchema = z.object({
   name: z.string().min(1).max(80).optional(),
   mcpPublishApproval: z.boolean().optional(),
+  mcpInboxAccess: z.boolean().optional(),
 });
 
 export function settingsRoutes(deps: RouteDeps): Hono<AppEnv> {
@@ -39,7 +41,7 @@ export function settingsRoutes(deps: RouteDeps): Hono<AppEnv> {
     const workspaceId = c.get("workspaceId");
     const workspace = await deps.prisma.workspace.findUniqueOrThrow({
       where: { id: workspaceId },
-      select: { id: true, name: true, mcpPublishApproval: true },
+      select: { id: true, name: true, mcpPublishApproval: true, mcpInboxAccess: true },
     });
     const usage = await planUsage(deps.prisma, workspaceId);
     return c.json({
@@ -61,10 +63,11 @@ export function settingsRoutes(deps: RouteDeps): Hono<AppEnv> {
     const data: Record<string, string | boolean> = {};
     if (body.name !== undefined) data.name = body.name;
     if (body.mcpPublishApproval !== undefined) data.mcpPublishApproval = body.mcpPublishApproval;
+    if (body.mcpInboxAccess !== undefined) data.mcpInboxAccess = body.mcpInboxAccess;
     const workspace = await deps.prisma.workspace.update({
       where: { id: workspaceId },
       data,
-      select: { id: true, name: true, mcpPublishApproval: true },
+      select: { id: true, name: true, mcpPublishApproval: true, mcpInboxAccess: true },
     });
     return c.json({ workspace });
   });

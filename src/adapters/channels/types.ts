@@ -12,6 +12,14 @@ export interface PublishResult {
   externalId: string;
 }
 
+/** Platform thread reference for replying to an inbound message (M6). */
+export interface ReplyTarget {
+  /** Platform id of the message being replied to (e.g. tweet id on X). */
+  externalId: string;
+  /** Platform id of the originating post when the thread is a comment chain. */
+  postExternalId?: string | null;
+}
+
 export interface ChannelAdapter {
   readonly slug: string;
 
@@ -37,6 +45,14 @@ export interface ChannelAdapter {
    * (e.g. "@handle" on X). Absent = the channel's static name is shown.
    */
   fetchAccountName?(tokens: TokenSet): Promise<string | null>;
+
+  /**
+   * OPTIONAL: reply to an inbound message in a 1:1 thread (M6). Absent = no
+   * reply support (replies fail as permanent on that channel). Real platforms
+   * implement it (X: POST /2/tweets with in_reply_to_tweet_id once approved);
+   * MockAdapter records the reply locally.
+   */
+  reply?(target: ReplyTarget, content: string, tokens: TokenSet): Promise<PublishResult>;
 
   /**
    * OPTIONAL capability (MockAdapter, dev/test only): when true, the queue

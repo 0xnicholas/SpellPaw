@@ -2,8 +2,13 @@
 // The single inbound path: any source of incoming messages (the mock-comment
 // queue job today, a real channel fetchInbound poll later) funnels through
 // recordInboundMessage, so dedup, contact resolution and lifecycle recompute
-// live in exactly one place.
+// live in exactly one place. Outbound replies go through sendReply (row
+// created PENDING, queue job executes the platform call).
+import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@/generated/prisma/client";
+import { ApiError } from "./errors";
+import type { Publisher } from "./publisher";
+import { replyJobId } from "./queue-domain";
 import { recomputeContactState, type TxClient } from "./interactions";
 
 export interface InboundMessageInput {
@@ -103,4 +108,80 @@ export async function manuallyActivateContact(
       data: { stateLifecycleStage: "ACTIVATED" },
     });
   });
+}
+
+// --- Outbound replies (M6) -------------------------------------------------
+
+export interface ReplyInput {
+  workspaceId: string;
+  contactId: string;
+  channelSlug: string;
+  content: string;
+}
+
+export interface ReplyResult {
+  conversationId: string;
+  /** Queue job state: "queued" | "posting" (PENDING row). */
+  state: "queued" | "posting";
+}
+
+/**
+ * Send a reply: requires an existing thread (≥1 inbound message for this
+ * contact × channel), creates the OUTBOUND row in PENDING state, then enqueues
+ * the reply job — 202-style: the platform call happens in the worker.
+ */
+export async function sendReply(
+  prisma: PrismaClient,
+  publisher: Publisher,
+  input: ReplyInput,
+): Promise<ReplyResult> {
+  const channel = await prisma.channel.findUnique({
+    where: { slug: input.channelSlug },
+  });
+  if (!channel) throw new ApiError(404, "channel not found");
+
+  const contact = await prisma.contact.findFirst({
+    where: { id: input.contactId, workspaceId: input.workspaceId },
+    select: { id: true },
+  });
+  if (!contact) throw new ApiError(404, "contact not found");
+
+  // Replies require an existing thread — the target is the latest inbound
+  // message (its platform id becomes the adapter's reply target).
+  const latestInbound = await prisma.conversation.findFirst({
+    where: {
+      workspaceId: input.workspaceId,
+      contactId: input.contactId,
+      channelId: channel.id,
+      direction: "INBOUND",
+    },
+    orderBy: { timestamp: "desc" },
+  });
+  if (!latestInbound) {
+    throw new ApiError(400, "no inbound message to reply to");
+  }
+
+  const conversation = await prisma.conversation.create({
+    data: {
+      workspaceId: input.workspaceId,
+      contactId: input.contactId,
+      channelId: channel.id,
+      postId: latestInbound.postId,
+      content: input.content,
+      externalId: `local:reply:${randomUUID()}`,
+      direction: "OUTBOUND",
+      deliveryState: "PENDING",
+    },
+  });
+
+  await publisher.enqueueReply({
+    conversationId: conversation.id,
+    workspaceId: input.workspaceId,
+    channelSlug: input.channelSlug,
+    content: input.content,
+    replyToExternalId: latestInbound.externalId,
+    postExternalId: null, // mock inbound carries no platform post id yet
+  });
+
+  return { conversationId: conversation.id, state: "queued" };
 }

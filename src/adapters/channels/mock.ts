@@ -6,7 +6,12 @@
 // simulated comment 30–90s after each publish, driving the mock-first inbound
 // pipeline (comment → Inbox → lifecycle).
 import { randomBytes } from "node:crypto";
-import type { ChannelAdapter, PublishResult, TokenSet } from "./types";
+import type {
+  ChannelAdapter,
+  PublishResult,
+  ReplyTarget,
+  TokenSet,
+} from "./types";
 
 /** Simulated comment template pool — one entry picked per scheduled comment. */
 const COMMENT_TEMPLATES: ReadonlyArray<{
@@ -56,5 +61,9 @@ export class MockAdapter implements ChannelAdapter {
 
   async publish(_content: string, _tokens: TokenSet): Promise<PublishResult> {
     return { externalId: `mock:${this.slug}:${Date.now()}` };
+  }
+
+  async reply(_target: ReplyTarget, _content: string, _tokens: TokenSet): Promise<PublishResult> {
+    return { externalId: `mock:reply:${this.slug}:${Date.now()}` };
   }
 }

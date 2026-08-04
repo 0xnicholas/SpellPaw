@@ -33,6 +33,10 @@ model Workspace {
   // MCP reject with a "requires approval" error — the web UI is the approved
   // path. Users can switch to trusted mode here (M5 decision, ADR-0012).
   mcpPublishApproval Boolean            @default(true)
+  // M6 (ADR-0014): PII-exception gate for the MCP inbox module (default false =
+  // inbox.* tools reject). Deliberately separate from mcpPublishApproval —
+  // different default posture, different tool family.
+  mcpInboxAccess    Boolean            @default(false)
   createdAt          DateTime           @default(now())
   posts              Post[]
   oauthConnections   OAuthConnection[]
@@ -216,6 +220,12 @@ enum ConvDirection {
 // externalId = platform-side message id (mock ids for simulated comments,
 // tweet ids once real X inbound lands) — unique for dedup/idempotency.
 // postId = the Post this message replies to (comment pipeline).
+enum DeliveryState {
+  PENDING
+  SENT
+  FAILED
+}
+
 model Conversation {
   id          String        @id @default(cuid())
   workspaceId String
@@ -225,7 +235,13 @@ model Conversation {
   content     String
   externalId  String        @unique
   direction   ConvDirection
-  timestamp   DateTime      @default(now())
+  // Outbound delivery state (M6): PENDING while queued, SENT on adapter
+  // success, FAILED terminal (permanent error, no retry — replies never
+  // auto-retry beyond one transient retry to avoid duplicate replies).
+  // Inbound rows stay SENT.
+  deliveryState DeliveryState @default(SENT)
+  errorMessage  String?
+  timestamp     DateTime      @default(now())
 
   workspace Workspace @relation(fields: [workspaceId], references: [id])
   contact   Contact   @relation(fields: [contactId], references: [id])
