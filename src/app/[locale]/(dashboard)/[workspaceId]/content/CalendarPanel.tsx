@@ -4,6 +4,9 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createApiClient } from "@/lib/client-api";
 import { DAY_MS, localDateKey } from "@/lib/time";
+import { Button } from "@/components/ui/button";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface CalendarPost {
   id: string;
@@ -71,38 +74,46 @@ export function CalendarPanel({ workspaceId }: { workspaceId: string }) {
   };
 
   return (
-    <section className="rounded-2xl border border-zinc-200 bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-3">
-        <h2 className="font-semibold text-zinc-900">Calendar</h2>
-        <div className="flex items-center gap-2 text-sm">
-          <button
-            onClick={() => setWeekStart((d) => new Date(d.getTime() - DAYS_7))}
-            className="rounded border border-zinc-300 px-2 py-1 hover:bg-zinc-50"
-          >
-            ←
-          </button>
-          <button
-            onClick={() => setWeekStart(startOfWeek(new Date()))}
-            className="rounded border border-zinc-300 px-2 py-1 hover:bg-zinc-50"
-          >
-            Today
-          </button>
-          <button
-            onClick={() => setWeekStart((d) => new Date(d.getTime() + DAYS_7))}
-            className="rounded border border-zinc-300 px-2 py-1 hover:bg-zinc-50"
-          >
-            →
-          </button>
-          <span className="ml-1 text-zinc-500">
-            {days[0].toLocaleDateString("en-US", { month: "short", day: "numeric" })} –{" "}
-            {days[6].toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-          </span>
-        </div>
-      </div>
+    <Card>
+      <CardHeader className="border-b">
+        <CardTitle>Calendar</CardTitle>
+        <CardAction>
+          <div className="flex items-center gap-2 text-sm">
+            <Button
+              variant="outline"
+              size="icon-sm"
+              onClick={() => setWeekStart((d) => new Date(d.getTime() - DAYS_7))}
+              aria-label="Previous week"
+            >
+              ←
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setWeekStart(startOfWeek(new Date()))}
+            >
+              Today
+            </Button>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              onClick={() => setWeekStart((d) => new Date(d.getTime() + DAYS_7))}
+              aria-label="Next week"
+            >
+              →
+            </Button>
+            <span className="ml-1 text-muted-foreground">
+              {days[0].toLocaleDateString("en-US", { month: "short", day: "numeric" })} –{" "}
+              {days[6].toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+            </span>
+          </div>
+        </CardAction>
+      </CardHeader>
 
-      {isLoading ? (
-        <p className="px-5 py-8 text-sm text-zinc-500">Loading…</p>
-      ) : (
+      <CardContent>
+        {isLoading ? (
+          <Skeleton className="h-40 w-full" />
+        ) : (
         <div className="grid grid-cols-7 divide-x divide-zinc-100">
           {days.map((day) => {
             const key = localDateKey(day.toISOString());
@@ -138,6 +149,7 @@ export function CalendarPanel({ workspaceId }: { workspaceId: string }) {
           })}
         </div>
       )}
-    </section>
+      </CardContent>
+    </Card>
   );
 }

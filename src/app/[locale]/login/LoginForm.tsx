@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useTranslations } from "next-intl";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export function LoginForm({ devMode }: { devMode: boolean }) {
   const t = useTranslations("login");
@@ -51,12 +54,9 @@ export function LoginForm({ devMode }: { devMode: boolean }) {
         {devMode ? (
           <>
             {devLink ? (
-              <a
-                href={devLink}
-                className="block rounded-lg bg-zinc-900 px-4 py-3 text-center text-sm font-medium text-white hover:bg-zinc-700"
-              >
-                {t("devLinkCta")}
-              </a>
+              <Button asChild className="w-full">
+                <a href={devLink}>{t("devLinkCta")}</a>
+              </Button>
             ) : (
               <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
                 {t("devMode")}
@@ -76,26 +76,25 @@ export function LoginForm({ devMode }: { devMode: boolean }) {
         <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">{t("error")}</p>
       )}
       <div>
-        <label htmlFor="email" className="mb-1 block text-sm font-medium text-zinc-700">
+        <Label htmlFor="email" className="mb-1 text-zinc-700">
           {t("email")}
-        </label>
-        <input
+        </Label>
+        <Input
           id="email"
           type="email"
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="you@example.com"
-          className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
         />
       </div>
-      <button
+      <Button
         type="submit"
         disabled={status === "sending"}
-        className="w-full rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
+        className="w-full"
       >
         {status === "sending" ? "…" : t("submit")}
-      </button>
+      </Button>
     </form>
   );
 }

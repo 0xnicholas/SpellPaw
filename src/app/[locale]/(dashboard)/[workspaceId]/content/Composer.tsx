@@ -6,6 +6,10 @@ import { useTranslations } from "next-intl";
 import { useComposerStore, type ComposerChannel } from "@/stores/composer";
 import { createApiClient } from "@/lib/client-api";
 import { getChannelCharLimit } from "@/domain/post";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 interface Props {
   workspaceId: string;
@@ -100,35 +104,37 @@ export function Composer({ workspaceId, channels }: Props) {
   const charLimit = activeChannel ? getChannelCharLimit(activeChannel.slug) : null;
 
   return (
-    <section className="rounded-2xl border border-zinc-200 bg-white shadow-sm">
-      <div className="border-b border-zinc-100 px-5 py-4">
-        <input
+    <Card>
+      <CardHeader className="border-b">
+        <Input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder={t("titlePlaceholder")}
-          className="w-full text-lg font-medium text-zinc-900 placeholder-zinc-400 focus:outline-none"
+          className="h-auto border-0 bg-transparent px-0 text-lg font-medium shadow-none focus-visible:ring-0"
         />
-      </div>
+      </CardHeader>
 
-      <div className="px-5 py-4">
+      <CardContent>
         {/* Global source */}
         <div className="relative">
-          <textarea
+          <Textarea
             value={globalDraft}
             onChange={(e) => setGlobalDraft(e.target.value)}
             rows={3}
             placeholder={t("writePlaceholder")}
-            className="w-full resize-none rounded-lg border border-zinc-200 p-3 text-sm focus:border-zinc-400 focus:outline-none"
+            className="resize-none"
           />
           {activeChannel && (
-            <button
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => aiMutation.mutate({ channelSlug: activeChannel.slug })}
               disabled={aiMutation.isPending || globalDraft.trim().length === 0}
-              className="absolute bottom-2 right-2 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium shadow-sm hover:bg-zinc-50 disabled:opacity-40"
+              className="absolute bottom-2 right-2"
               title={`Rewrite the draft as a ${activeChannel.name} post using your model key`}
             >
               {aiMutation.isPending ? "✨ Rewriting…" : "✨ AI rewrite"}
-            </button>
+            </Button>
           )}
           {aiError && (
             <p className="mt-1 text-xs text-amber-700">
@@ -168,12 +174,12 @@ export function Composer({ workspaceId, channels }: Props) {
         {/* Variant editor for the active channel */}
         {activeChannel && (
           <div className="mt-3">
-            <textarea
+            <Textarea
               value={activeContent}
               onChange={(e) => setVariant(activeChannel.slug, e.target.value)}
               rows={3}
               placeholder={t("variantPlaceholder", { name: activeChannel.name })}
-              className="w-full resize-none rounded-lg border border-zinc-200 p-3 text-sm focus:border-zinc-400 focus:outline-none"
+              className="resize-none"
             />
             <div className="mt-1 flex items-center justify-between text-xs text-zinc-500">
               <span>{charLimit ? `${activeContent.trim().length}/${charLimit}` : "—"}</span>
@@ -185,41 +191,40 @@ export function Composer({ workspaceId, channels }: Props) {
             </div>
           </div>
         )}
+      </CardContent>
 
-        {/* Publish bar */}
-        <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-zinc-100 pt-4">
-          <input
-            type="datetime-local"
-            value={scheduledAt}
-            onChange={(e) => setScheduledAt(e.target.value)}
-            className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm"
-            aria-label="Schedule time"
-          />
-          <button
-            onClick={() => mutation.mutate("draft")}
-            disabled={!canSubmit || mutation.isPending}
-            className="rounded-lg border border-zinc-300 px-4 py-1.5 text-sm font-medium hover:bg-zinc-50 disabled:opacity-40"
-          >
-            Save Draft
-          </button>
-          <button
-            onClick={() => mutation.mutate("schedule")}
-            disabled={!canSubmit || !scheduledAt || mutation.isPending}
-            className="rounded-lg bg-zinc-200 px-4 py-1.5 text-sm font-medium hover:bg-zinc-300 disabled:opacity-40"
-          >
-            Schedule
-          </button>
-          <button
-            onClick={() => mutation.mutate("publish")}
-            disabled={!canSubmit || mutation.isPending}
-            className="rounded-lg bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-40"
-          >
-            {mutation.isPending ? t("working") : t("publish")}
-          </button>
-          {notice && <span className="text-sm text-green-700">{notice}</span>}
-          {error && <span className="text-sm text-red-600">{error}</span>}
-        </div>
-      </div>
-    </section>
+      {/* Publish bar */}
+      <CardFooter className="flex flex-wrap items-center gap-3">
+        <Input
+          type="datetime-local"
+          value={scheduledAt}
+          onChange={(e) => setScheduledAt(e.target.value)}
+          className="w-auto"
+          aria-label="Schedule time"
+        />
+        <Button
+          variant="outline"
+          onClick={() => mutation.mutate("draft")}
+          disabled={!canSubmit || mutation.isPending}
+        >
+          Save Draft
+        </Button>
+        <Button
+          variant="secondary"
+          onClick={() => mutation.mutate("schedule")}
+          disabled={!canSubmit || !scheduledAt || mutation.isPending}
+        >
+          Schedule
+        </Button>
+        <Button
+          onClick={() => mutation.mutate("publish")}
+          disabled={!canSubmit || mutation.isPending}
+        >
+          {mutation.isPending ? t("working") : t("publish")}
+        </Button>
+        {notice && <span className="text-sm text-green-700">{notice}</span>}
+        {error && <span className="text-sm text-red-600">{error}</span>}
+      </CardFooter>
+    </Card>
   );
 }
