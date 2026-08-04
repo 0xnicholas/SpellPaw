@@ -45,7 +45,7 @@ Content Surface 中创建的内容单元——一对多向外发布。生命周�
 *Avoid*: Content, tweet, update, announcement
 
 **Message**:
-Inbox Surface 中收发的通信单元——一对一对话。来自 Correspondent（入向）或用户/Agent（出向）。Post 的公开评论自动创建入向 Message。
+Conversation 记录的通信视角称谓——同一实体，UI/API 语境下称“消息”。来自 Correspondent（入向）或用户/Agent（出向）。Post 的公开评论自动创建入向 Message。
 *Avoid*: Reply, response, chat, DM
 
 ### Data
@@ -53,7 +53,9 @@ Inbox Surface 中收发的通信单元——一对一对话。来自 Corresponde
 **Interaction**:
 Contact 时间轴上的一次事件记录。三种子类型：
 - **Content Touch**：Contact 与 Post 的互动（点击、点赞、分享）。来源：SpellPaw 自身追踪。
-- **Conversation**：Inbox 中的 Message 交换。来源：Inbox Surface。
+- **Conversation**:
+Inbox 中的一次 Message 交换，也是 Interaction 的子类型（一行记录 = 一条消息，含方向与正文）。同一 Contact 在同一 Channel 下的多次 Conversation 在 Inbox 中聚合为一个“对话”（展示概念，非一等数据模型）。来源：Inbox Surface。
+*Avoid*: Reply, response, chat, DM
 - **Event**：Contact 在用户产品内部的行为（注册、订阅、升级、登录、功能使用）。来源：外部系统只读连接或手动标记。
 
 所有 Interaction 数据永久保留；AI 推导（Persona/State）仅使用最近 365 天的数据。
@@ -74,7 +76,7 @@ Contact 在外部系统中的关联标识（CRM ID、支付系统 Customer ID）
 **Lifecycle Stage**:
 Contact 在客户旅程中的阶段——由规则触发自动流转，部分阶段可手动标记。完整状态机：Aware → Engaged → Activated → Loyal → At Risk → Churned。从 Churned 重新活跃则回到 Aware。
 - **Aware**：首次 Content Touch——进入系统的起点。
-- **Engaged**：累计 3 次 Content Touch 或 1 次 Conversation。
+- **Engaged**：30 天窗口内累计 3 次 Content Touch，或 1 次 Conversation。
 - **Activated**：首次有产品使用证据（Conversation 中表达使用/购买意图、Event 注册/订阅，或用户手动标记）。最关键的一步。
 - **Loyal**：Activated 后连续 3 月有正面 Interaction。
 - **At Risk**：30 天无 Interaction，或 Conversation 中出现负面 Sentiment 信号。
