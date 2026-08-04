@@ -48,6 +48,7 @@ function syncPublisher(adapters: Record<string, ChannelAdapter>): Publisher {
     schedule: async () => {},
     cancelSchedule: async () => {},
     getVariantQueueState: async () => null,
+    enqueueMockComment: async () => {},
     close: async () => {},
   };
 }

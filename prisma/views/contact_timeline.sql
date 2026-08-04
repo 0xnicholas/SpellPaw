@@ -10,7 +10,7 @@ CREATE OR REPLACE VIEW contact_timeline AS
   FROM "ContentTouch"
   UNION ALL
   SELECT "id", "contactId", 'CONVERSATION' AS "type", "timestamp",
-         jsonb_build_object('messageId', "messageId", 'direction', "direction") AS "payload"
+         jsonb_build_object('externalId', "externalId", 'direction', "direction") AS "payload"
   FROM "Conversation"
   UNION ALL
   SELECT "id", "contactId", 'EVENT' AS "type", "timestamp",

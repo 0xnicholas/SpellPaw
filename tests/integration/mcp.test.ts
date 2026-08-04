@@ -19,6 +19,7 @@ const noopPublisher: Publisher = {
   schedule: async () => {},
   cancelSchedule: async () => {},
   getVariantQueueState: async () => null,
+  enqueueMockComment: async () => {},
   close: async () => {},
 };
 

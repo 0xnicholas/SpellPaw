@@ -165,9 +165,12 @@ describe("click pipeline (applyClick)", () => {
     });
   });
 
-  it("promotes to ENGAGED after touching 2 distinct posts; anonymous clicks still count", async () => {
+  it("promotes to ENGAGED after 3 touches in 30 days (cumulative, not distinct); anonymous clicks still count", async () => {
     const p1 = await seedPost("P1");
     const p2 = await seedPost("P2", "linkedin");
+    // M6 rule (ADR-0013): ≥3 cumulative touches within 30 days — repeat clicks
+    // on the same post count, distinct posts don't.
+    await applyClick(prisma, { workspaceId: WS, contactId: "c2", postId: p1.id, variantId: p1.variants[0]!.id });
     await applyClick(prisma, { workspaceId: WS, contactId: "c2", postId: p1.id, variantId: p1.variants[0]!.id });
     await applyClick(prisma, { workspaceId: WS, contactId: "c2", postId: p2.id, variantId: p2.variants[0]!.id });
     const contact = await prisma.contact.findUniqueOrThrow({ where: { id: "c2" } });
@@ -341,11 +344,9 @@ describe("shorten + analytics API", () => {
     expect(d.totalTouches).toBe(4);
     expect(d.uniqueContacts).toBe(2);
     expect(d.repeatViewers).toBe(1); // c-b touched 2 distinct posts
+    // M6 rule: c-b has 2 touches (below the ≥3 threshold) — both contacts AWARE.
     expect(d.stageDistribution).toEqual(
-      expect.arrayContaining([
-        { stage: "AWARE", count: 1 },
-        { stage: "ENGAGED", count: 1 },
-      ]),
+      expect.arrayContaining([{ stage: "AWARE", count: 2 }]),
     );
     expect(d.topPosts[0]?.clicks).toBe(2); // p1 touched by c-a + c-b
     expect(d.touchesByDay.length).toBeGreaterThan(0);

@@ -14,6 +14,11 @@ import type { PrismaClient } from "@/generated/prisma/client";
 import type { ChannelAdapter } from "@/adapters/channels/types";
 import { markVariantFailed } from "@/domain/post";
 import {
+  MOCK_INBOUND_QUEUE,
+  mockCommentDelayMs,
+  mockCommentExternalId,
+  mockCommentJobId,
+  type MockCommentJobData,
   publishJobId,
   publishQueueName,
   schedulerJobId,
@@ -28,6 +33,8 @@ import {
 } from "./posts";
 import type { Post, PostVariant } from "@/generated/prisma/client";
 import { applyClick, type ClickEvent } from "./interactions";
+import { recordInboundMessage } from "./inbox";
+import { generateMockComment } from "@/adapters/channels/mock";
 
 export interface QueueJobOptions {
   attempts?: number;
@@ -74,6 +81,7 @@ export function createPublisher(deps: QueueDeps): Publisher {
   const options = deps.jobOptions ?? { attempts: 4, backoffMs: 30_000 };
   const publishQueues = new Map<string, Queue>();
   let schedulerQueue: Queue | null = null;
+  let mockInboundQueue: Queue | null = null;
 
   function queueFor(slug: string): Queue {
     const existing = publishQueues.get(slug);
@@ -86,6 +94,13 @@ export function createPublisher(deps: QueueDeps): Publisher {
   function scheduler(): Queue {
     schedulerQueue ??= new Queue(SCHEDULER_QUEUE, { connection: redis(deps.redisUrl) });
     return schedulerQueue;
+  }
+
+  function mockInbound(): Queue {
+    mockInboundQueue ??= new Queue(MOCK_INBOUND_QUEUE, {
+      connection: redis(deps.redisUrl),
+    });
+    return mockInboundQueue;
   }
 
   return {
@@ -177,10 +192,22 @@ export function createPublisher(deps: QueueDeps): Publisher {
       return null;
     },
 
+    async enqueueMockComment(input: MockCommentJobData, delayMs = mockCommentDelayMs()) {
+      // One simulated comment per variant ever: the job id dedupes, and the
+      // inbound row's externalId dedupes again (ADR-0013).
+      await mockInbound().add(MOCK_INBOUND_QUEUE, input, {
+        jobId: mockCommentJobId(input.variantId),
+        delay: delayMs,
+        removeOnComplete: true,
+        removeOnFail: { age: 86_400 },
+      });
+    },
+
     async close() {
       await Promise.all([
         ...Array.from(publishQueues.values()).map((q) => q.close()),
         schedulerQueue?.close(),
+        mockInboundQueue?.close(),
       ]);
     },
   };
@@ -202,6 +229,7 @@ function autoPublishableVariantIds(post: Post & { variants: PostVariant[] }): st
 
 async function publishJobProcessor(
   deps: WorkerDeps,
+  publisher: Publisher,
   job: Job<PublishJobData>,
 ): Promise<void> {
   const { prisma } = deps;
@@ -224,6 +252,21 @@ async function publishJobProcessor(
     if (outcome.state === "failed") {
       // Transient platform error — rethrow so BullMQ retries with backoff.
       throw new Error(outcome.message);
+    }
+    // Mock-first inbound (ADR-0013): a simulated comment arrives 30–90s after
+    // a successful publish. Scheduling failures are cosmetic — never fail the
+    // already-succeeded publish job over a demo comment.
+    if (deps.adapters[job.data.channelSlug]?.simulatesInbound) {
+      try {
+        await publisher.enqueueMockComment({
+          workspaceId: job.data.workspaceId,
+          postId: job.data.postId,
+          variantId: job.data.variantId,
+          channelSlug: job.data.channelSlug,
+        });
+      } catch (err) {
+        console.error("[queue] failed to schedule mock comment", err);
+      }
     }
     await settlePost(prisma, job.data.postId);
   } catch (err) {
@@ -299,6 +342,27 @@ export function clickQueue(redisUrl: string): Queue<ClickEvent> {
   });
 }
 
+/**
+ * Simulated-comment job (ADR-0013 mock-first inbound): generates a comment
+ * and funnels it through recordInboundMessage — the same path a real channel
+ * fetchInbound poll will use. Idempotent by Conversation.externalId.
+ */
+async function mockCommentProcessor(
+  deps: WorkerDeps,
+  job: Job<MockCommentJobData>,
+): Promise<void> {
+  const { workspaceId, postId, variantId, channelSlug } = job.data;
+  const comment = generateMockComment(variantId);
+  await recordInboundMessage(deps.prisma, {
+    workspaceId,
+    channelSlug,
+    content: comment.content,
+    externalId: mockCommentExternalId(variantId),
+    postId,
+    sender: { name: comment.name, handle: comment.handle },
+  });
+}
+
 export function createWorkers(deps: WorkerDeps): RunningWorkers {
   const connection = redis(deps.redisUrl);
   const publisher = createPublisher(deps);
@@ -310,7 +374,7 @@ export function createWorkers(deps: WorkerDeps): RunningWorkers {
     // invalid_grant and spuriously FAIL a healthy variant).
     const worker = new Worker<PublishJobData>(
       publishQueueName(slug),
-      (job) => publishJobProcessor(deps, job),
+      (job) => publishJobProcessor(deps, publisher, job),
       { connection, concurrency: 1 },
     );
     // Transient failure exhausted all attempts → persist FAILED.
@@ -342,6 +406,13 @@ export function createWorkers(deps: WorkerDeps): RunningWorkers {
     { connection, concurrency: 10 },
   );
 
+  // Mock-first inbound (ADR-0013): simulated comments after publish.
+  const mockInboundWorker = new Worker<MockCommentJobData>(
+    MOCK_INBOUND_QUEUE,
+    (job) => mockCommentProcessor(deps, job),
+    { connection, concurrency: 2 },
+  );
+
   const reconcilerWorker = new Worker(RECONCILER_JOB, () =>
     reconcilerJobProcessor(deps, publisher),
   { connection, concurrency: 1 });
@@ -369,6 +440,7 @@ export function createWorkers(deps: WorkerDeps): RunningWorkers {
         ...publishWorkers.map((w) => w.close()),
         schedulerWorker.close(),
         clickWorker.close(),
+        mockInboundWorker.close(),
         reconcilerWorker.close(),
       ]);
       await publisher.close();

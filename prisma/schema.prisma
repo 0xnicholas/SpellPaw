@@ -25,23 +25,24 @@ enum PublishState {
 }
 
 model Workspace {
-  id               String           @id @default(cuid())
+  id                 String             @id @default(cuid())
   // Auth.js user id (JWT session) — Account entity is owned by Auth.js in M1.
-  accountId        String
-  name             String
+  accountId          String
+  name               String
   // MCP publish approval (spec §3): while true, schedule/publish tools via
   // MCP reject with a "requires approval" error — the web UI is the approved
   // path. Users can switch to trusted mode here (M5 decision, ADR-0012).
-  mcpPublishApproval Boolean          @default(true)
-  createdAt        DateTime         @default(now())
-  posts            Post[]
-  oauthConnections OAuthConnection[]
-  modelProviderKeys ModelProviderKey[]
-  apiTokens        ApiToken[]
-  contacts         Contact[]
-  shortLinks       ShortLink[]
-  conversations    Conversation[]
-  events           Event[]
+  mcpPublishApproval Boolean            @default(true)
+  createdAt          DateTime           @default(now())
+  posts              Post[]
+  oauthConnections   OAuthConnection[]
+  modelProviderKeys  ModelProviderKey[]
+  apiTokens          ApiToken[]
+  contacts           Contact[]
+  shortLinks         ShortLink[]
+  conversations      Conversation[]
+  readStates         InboxReadState[]
+  events             Event[]
 
   @@index([accountId])
 }
@@ -92,11 +93,13 @@ model VerificationToken {
 }
 
 model Channel {
-  id          String           @id @default(cuid())
-  slug        String           @unique
-  name        String
-  connections OAuthConnection[]
-  variants    PostVariant[]
+  id            String            @id @default(cuid())
+  slug          String            @unique
+  name          String
+  connections   OAuthConnection[]
+  variants      PostVariant[]
+  conversations Conversation[]
+  readStates    InboxReadState[]
 }
 
 model OAuthConnection {
@@ -119,19 +122,20 @@ model OAuthConnection {
 }
 
 model Post {
-  id          String        @id @default(cuid())
+  id          String     @id @default(cuid())
   workspaceId String
   title       String?
-  status      PostStatus    @default(DRAFT)
+  status      PostStatus @default(DRAFT)
   scheduledAt DateTime?
   publishedAt DateTime?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 
-  workspace Workspace      @relation(fields: [workspaceId], references: [id])
-  variants  PostVariant[]
-  shortLinks ShortLink[]
-  touches    ContentTouch[]
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id])
+  variants      PostVariant[]
+  shortLinks    ShortLink[]
+  touches       ContentTouch[]
+  conversations Conversation[]
 
   @@index([workspaceId, status])
   @@index([workspaceId, scheduledAt])
@@ -149,8 +153,8 @@ model PostVariant {
   externalId   String?
   errorMessage String?
 
-  post      Post        @relation(fields: [postId], references: [id])
-  channel   Channel     @relation(fields: [channelId], references: [id])
+  post      Post       @relation(fields: [postId], references: [id])
+  channel   Channel    @relation(fields: [channelId], references: [id])
   shortLink ShortLink?
 
   @@unique([postId, channelId])
@@ -205,18 +209,48 @@ enum ConvDirection {
   OUTBOUND
 }
 
+// Inbox Phase 1 (ADR-0013): row-as-message — each Conversation row is ONE
+// message exchange (direction + content + timestamp). The "conversation" a
+// user sees in the Inbox list is a query-time aggregation over
+// contact × channel, not a first-class entity.
+// externalId = platform-side message id (mock ids for simulated comments,
+// tweet ids once real X inbound lands) — unique for dedup/idempotency.
+// postId = the Post this message replies to (comment pipeline).
 model Conversation {
-  id        String        @id @default(cuid())
+  id          String        @id @default(cuid())
   workspaceId String
-  contactId String
-  messageId String
-  direction ConvDirection
-  timestamp DateTime      @default(now())
+  contactId   String
+  channelId   String
+  postId      String?
+  content     String
+  externalId  String        @unique
+  direction   ConvDirection
+  timestamp   DateTime      @default(now())
 
   workspace Workspace @relation(fields: [workspaceId], references: [id])
   contact   Contact   @relation(fields: [contactId], references: [id])
+  channel   Channel   @relation(fields: [channelId], references: [id])
+  post      Post?     @relation(fields: [postId], references: [id])
 
   @@index([contactId, timestamp])
+  @@index([workspaceId, channelId, timestamp])
+}
+
+// User consumption state for the Inbox list (ADR-0013): "read" cannot be
+// derived from timestamps — it records the last time the user viewed a
+// contact×channel thread. Not a conversation model, just a read cursor.
+model InboxReadState {
+  id          String   @id @default(cuid())
+  workspaceId String
+  contactId   String
+  channelId   String
+  lastReadAt  DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  contact   Contact   @relation(fields: [contactId], references: [id])
+  channel   Channel   @relation(fields: [channelId], references: [id])
+
+  @@unique([contactId, channelId])
 }
 
 enum EventType {
@@ -224,6 +258,8 @@ enum EventType {
   SUBSCRIBE
   UPGRADE
   LOGIN
+  // Manual activation (M6 Inbox): user marks a contact Activated in the UI/API.
+  MANUAL_ACTIVATION
 }
 
 model Event {
@@ -305,9 +341,9 @@ model Contact {
   profileTags          String[]
 
   // Persona (AI-derived, no PII, 365-day window) — populated by M4 derivation.
-  personaContentDNA    Json?
-  personaSentimentArc  Json?
-  personaIntentVector  Float[] // pgvector
+  personaContentDNA   Json?
+  personaSentimentArc Json?
+  personaIntentVector Float[] // pgvector
 
   // State (real-time, rules-driven) — recomputed on Interaction events.
   stateLifecycleStage   LifecycleStage @default(AWARE)
@@ -317,9 +353,10 @@ model Contact {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  workspace Workspace    @relation(fields: [workspaceId], references: [id])
-  touches   ContentTouch[]
+  workspace     Workspace        @relation(fields: [workspaceId], references: [id])
+  touches       ContentTouch[]
   conversations Conversation[]
+  readStates    InboxReadState[]
   events        Event[]
 
   @@index([workspaceId, stateLifecycleStage])

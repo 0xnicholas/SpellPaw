@@ -27,3 +27,35 @@ export function schedulerJobId(postId: string): string {
 export function publishQueueName(channelSlug: string): string {
   return `publish-${channelSlug}`;
 }
+
+// --- M6 mock-first inbound (ADR-0013) --------------------------------------
+
+/** Simulated-comment jobs land on their own queue; one worker handles all. */
+export const MOCK_INBOUND_QUEUE = "mock-inbound";
+
+/** Min/max delay between a successful publish and its simulated comment. */
+export const MOCK_COMMENT_DELAY_MIN_MS = 30_000;
+export const MOCK_COMMENT_DELAY_RANGE_MS = 60_000;
+
+export interface MockCommentJobData {
+  workspaceId: string;
+  postId: string;
+  variantId: string;
+  channelSlug: string;
+}
+
+/** One simulated comment per variant ever (BullMQ id dedupe + Conversation.externalId). */
+export function mockCommentJobId(variantId: string): string {
+  return `mock-comment-${variantId}`;
+}
+
+/** Random delay in [30s, 90s) — the "someone replies shortly after posting" feel. */
+export function mockCommentDelayMs(now: number = Date.now()): number {
+  const seed = now % MOCK_COMMENT_DELAY_RANGE_MS;
+  return MOCK_COMMENT_DELAY_MIN_MS + seed;
+}
+
+/** Platform message id for the simulated comment (unique per variant). */
+export function mockCommentExternalId(variantId: string): string {
+  return `mock:comment:${variantId}`;
+}

@@ -37,4 +37,12 @@ export interface ChannelAdapter {
    * (e.g. "@handle" on X). Absent = the channel's static name is shown.
    */
   fetchAccountName?(tokens: TokenSet): Promise<string | null>;
+
+  /**
+   * OPTIONAL capability (MockAdapter, dev/test only): when true, the queue
+   * layer schedules a simulated inbound message shortly after each successful
+   * publish (ADR-0013 — mock-first inbound pipeline). Real adapters omit it;
+   * their inbound arrives via fetchInbound() polling once implemented.
+   */
+  readonly simulatesInbound?: boolean;
 }
