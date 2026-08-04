@@ -89,6 +89,29 @@ export function contactsRoutes(deps: RouteDeps): Hono<AppEnv> {
     return c.json({ contact });
   });
 
+  // M6: recent interaction timeline for the Inbox sidebar — reads the
+  // contact_timeline VIEW (ContentTouch / Conversation / Event merged).
+  // Payload carries no PII (postId/action, externalId/direction, eventType).
+  app.get("/:id/timeline", async (c) => {
+    const contact = await deps.prisma.contact.findFirst({
+      where: { id: c.req.param("id"), workspaceId: c.get("workspaceId") },
+      select: { id: true },
+    });
+    if (!contact) throw new ApiError(404, "contact not found");
+    const rows = await deps.prisma.$queryRaw<
+      Array<{ type: string; timestamp: Date; payload: Record<string, unknown> }>
+    >`
+      SELECT "type", "timestamp", "payload"
+      FROM contact_timeline
+      WHERE "contactId" = ${contact.id}
+      ORDER BY "timestamp" DESC
+      LIMIT 20
+    `;
+    return c.json({
+      timeline: rows.map((r) => ({ ...r, timestamp: r.timestamp.toISOString() })),
+    });
+  });
+
   // M6: manual activation (ADR-0013 lifecycle) — user asserts product-usage
   // evidence; records a timeline Event and sets ACTIVATED (sticky).
   app.post("/:id/activate", async (c) => {

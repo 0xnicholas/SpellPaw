@@ -5,7 +5,8 @@
     "channels": "Channels",
     "analytics": "Analytics",
     "settings": "Settings",
-    "signOut": "Sign out"
+    "signOut": "Sign out",
+    "inbox": "Inbox"
   },
   "login": {
     "title": "Sign in to SpellPaw",
@@ -156,5 +157,26 @@
     "finalBody": "Start with one channel and one tracked link. The graph does the rest.",
     "footerTag": "customer lifecycle intelligence for AI-native builders",
     "selfHosted": "Self-hosted"
+  },
+  "inbox": {
+    "title": "Inbox",
+    "subtitle": "Every conversation, one timeline. Reply where your customers are.",
+    "empty": "No conversations yet — publish a post and the first reply will land here.",
+    "unread": "unread",
+    "you": "You",
+    "replyPlaceholder": "Write a reply…",
+    "send": "Send",
+    "sending": "Sending…",
+    "sent": "Sent",
+    "failed": "Failed — tap to retry?",
+    "replyFailed": "Reply failed. Please try again.",
+    "activate": "Mark Activated",
+    "activated": "Activated",
+    "lifecycle": "Lifecycle",
+    "type": "Type",
+    "activity": "Recent activity",
+    "noActivity": "No interactions yet",
+    "channel": "Channel",
+    "openThread": "Open conversation"
   }
 }

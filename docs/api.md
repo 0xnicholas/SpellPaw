@@ -60,12 +60,27 @@
 | `/api/analytics/posts/:id` | GET | 单 Post 触达明细 |
 | `/api/analytics/top-posts` | GET | 按触达排序 |
 
+## Inbox（M6，ADR-0013/0014）
+
+线程 = contact × channel 的查询聚合；`threadId` = `${contactId}:${channelSlug}`。
+会话认证的 REST 层返回完整对话内容与对方身份（Inbox 是 PII 例外域——这是产品本身；
+contact 端点仍永不返回 `profile_*`）。
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/inbox/conversations` | GET | 线程列表（联系人 + 渠道徽章 + 最后消息 + 未读数 + lastReadAt） |
+| `/api/inbox/conversations/:threadId` | GET | 线程全文（消息升序，含 deliveryState） |
+| `/api/inbox/conversations/:threadId/reply` | POST | `{content}` → 202 入队（PENDING→SENT/FAILED，瞬时错误重试 1 次） |
+| `/api/inbox/conversations/:threadId/read` | POST | 写已读游标（InboxReadState） |
+| `/api/contacts/:id/activate` | POST | 手动标记 Activated（写 Event + 粘性阶段，重算不降级） |
+| `/api/contacts/:id/timeline` | GET | 最近 20 条互动（contact_timeline 视图，payload 无 PII） |
+
 ## 设置
 
 | 端点 | 方法 | 说明 |
 |------|------|------|
-| `/api/settings/workspace` | GET | 名称 + MCP 信任开关 + 计划用量（3/50/1000 护栏） |
-| `/api/settings/workspace` | PATCH | `{name?, mcpPublishApproval?}` |
+| `/api/settings/workspace` | GET | 名称 + MCP 信任开关 ×2 + 计划用量（3/50/1000 护栏） |
+| `/api/settings/workspace` | PATCH | `{name?, mcpPublishApproval?, mcpInboxAccess?}` |
 | `/api/settings/api-tokens` | GET/POST | 列出 / mint（明文仅此一次返回） |
 | `/api/settings/api-tokens/:id` | DELETE | 吊销 |
 
@@ -75,7 +90,7 @@
 |------|------|------|
 | `/api/health` | GET | 匿名健康探针（DB ping → `{"ok":true}`，否则 503） |
 
-## MCP Server（14 tools，5 模块）
+## MCP Server（17 tools，6 模块）
 
 端点：`POST /api/mcp`（Streamable HTTP，`mcp-session-id` 会话头，1 小时空闲
 TTL）。认证：workspace Bearer token。写操作受 `MCP_WRITE_DAILY_CAP`（默认
@@ -88,12 +103,16 @@ TTL）。认证：workspace Bearer token。写操作受 `MCP_WRITE_DAILY_CAP`（
 | Calendar | `calendar.view` `calendar.find_slot` |
 | Performance | `post.performance` `dashboard.summary` |
 | Contacts | `contact.list` `contact.get` `contact.repeat_viewers` |
+| Inbox | `inbox.list` `inbox.read` `inbox.reply` |
 
-安全约束（spec §3）：
+安全约束（spec §3 + ADR-0014）：
 
 - **Publish 审批**：workspace 信任开关开启时（默认），`schedule.*` 返回
   `requires approval` 错误——网页端是唯一发布路径；Settings 关闭开关进入
   信任模式。
-- **PII 契约**：Contacts 模块永不返回 `profile_*`（姓名/邮箱/社交账号）。
-  单一事实源：`src/server/contact-select.ts`。
-- 限流：写工具 `sp:mcp-write:{ws}` 每日上限；AI 生成 10 次/分钟。
+- **PII 契约（按模块声明）**：Contacts 模块永不返回 `profile_*`（姓名/邮箱/
+  社交账号）。**Inbox 模块是明确例外域（ADR-0014）**：`inbox.*` 返回完整对
+  话内容与对方身份，受独立开关 `mcpInboxAccess` 门控（默认**关**——未开启时
+  整个模块拒绝）。单一事实源：`src/server/contact-select.ts` + 本表。
+- 限流：写工具 `sp:mcp-write:{ws}` 每日上限（含 `inbox.reply`）；AI 生成
+  10 次/分钟。

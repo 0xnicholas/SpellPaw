@@ -39,7 +39,7 @@ M2 "队列 + 排程"：
 - ✅ M5 发布就绪（收尾中）：MCP/API 文档、部署指南、性能/安全加固、Landing；E2E 闭环通过、`pnpm audit --prod` 干净、启动/停止脚本（`scripts/dev.sh` + `scripts/app.sh`）
 - ✅ Twitter/X 真实接入（OAuth2 PKCE 四件套 + refresh token 自动续期 + @handle）——代码完成，待开发者审核批准后填入真实凭据
 - ⏳ M5 剩余：真实服务器部署验证（DEPLOYMENT.md + app.sh）、Landing 英文案例叙事
-- 🚧 **M6 Inbox Phase 1（进行中，ADR 0013/0014）**：行即消息的 Inbox 数据层 + Mock 入向管道（含评论→Inbox）+ 生命周期扩展（CORRESPONDENT/Engaged/手动 Activated）+ REST/MCP inbox 模块（PII 例外域，默认关）+ 三列 UI；X 真实入向待开发者审核后接入
+- 🚧 **M6 Inbox Phase 1（完成，ADR 0013/0014）**：行即消息的 Inbox 数据层 + Mock 入向管道（含评论→Inbox）+ 生命周期扩展（CORRESPONDENT/Engaged/手动 Activated）+ REST/MCP inbox 模块（PII 例外域，默认关）+ 三列 UI + E2E 闭环；X 真实入向待开发者审核后接入
 - M6+ 反馈驱动（后续）：分析深度 / 编排引擎（按此顺序，见 ADR 0012）
 - 其余尾项：Calendar 拖拽改期（M2）、护栏式限额已落地（3/50/1000，env 可调）
 

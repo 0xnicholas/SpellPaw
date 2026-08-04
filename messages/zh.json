@@ -5,7 +5,8 @@
     "channels": "渠道",
     "analytics": "分析",
     "settings": "设置",
-    "signOut": "退出登录"
+    "signOut": "退出登录",
+    "inbox": "收件箱"
   },
   "login": {
     "title": "登录 SpellPaw",
@@ -156,5 +157,26 @@
     "finalBody": "从一个渠道、一条追踪链接开始。图谱会完成其余工作。",
     "footerTag": "为 AI 原生构建者打造的客户生命周期智能",
     "selfHosted": "自托管"
+  },
+  "inbox": {
+    "title": "收件箱",
+    "subtitle": "所有对话，一条时间线。在你客户所在的地方回复。",
+    "empty": "还没有对话 —— 发布一条帖子，第一条回复会出现在这里。",
+    "unread": "未读",
+    "you": "你",
+    "replyPlaceholder": "写回复…",
+    "send": "发送",
+    "sending": "发送中…",
+    "sent": "已发送",
+    "failed": "发送失败",
+    "replyFailed": "回复失败，请重试。",
+    "activate": "标记为已激活",
+    "activated": "已激活",
+    "lifecycle": "生命周期",
+    "type": "类型",
+    "activity": "最近互动",
+    "noActivity": "暂无互动",
+    "channel": "渠道",
+    "openThread": "打开对话"
   }
 }

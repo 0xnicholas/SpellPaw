@@ -21,6 +21,12 @@ export async function DashboardNav({ workspace }: { workspace: { id: string; nam
               {t("content")}
             </Link>
             <Link
+              href={`/${workspace.id}/inbox`}
+              className="font-medium text-zinc-500 hover:text-zinc-900"
+            >
+              {t("inbox")}
+            </Link>
+            <Link
               href={`/${workspace.id}/analytics`}
               className="font-medium text-zinc-500 hover:text-zinc-900"
             >
