@@ -10,7 +10,7 @@ SpellPaw 面向 SMB 和 AI-native builders，将内容营销、客户服务和�
 
 ## 当前阶段
 
-**Phase 1 · M1–M4 已实现，M5 发布就绪进行中**
+**Phase 1 · M1–M5 已实现，M5 收尾进行中**
 
 M1 "Hello Graph"：
 
@@ -36,9 +36,10 @@ M2 "队列 + 排程"：
 
 - ✅ M3 "AI Sees You"：BYOK AI Provider（OpenAI/Anthropic，密钥加密存储）+ 嵌入式 MCP Server（5 模块 14 Tools，PII 契约）
 - ✅ M4 "Graph Emerges"：自托管短链 + ContentTouch 点击管道 + Customer Graph 真数据、分析面板、i18n（en 主 / zh 次）
-- ✅ M5 发布就绪（进行中）：MCP/API 文档、部署指南、性能/安全加固、Landing + 案例（英文叙事）
-- ⏳ 【插入】Twitter/X 真实接入（OAuth 四件套 + 开发者审核）——真实渠道闭环的前置项
-- M6+ 反馈驱动：Inbox Phase 1 / 分析深度 / 编排引擎（按此顺序）
+- ✅ M5 发布就绪（收尾中）：MCP/API 文档、部署指南、性能/安全加固、Landing；E2E 闭环通过、`pnpm audit --prod` 干净、启动/停止脚本（`scripts/dev.sh` + `scripts/app.sh`）
+- ✅ Twitter/X 真实接入（OAuth2 PKCE 四件套 + refresh token 自动续期 + @handle）——代码完成，待开发者审核批准后填入真实凭据
+- ⏳ M5 剩余：真实服务器部署验证（DEPLOYMENT.md + app.sh）、Landing 英文案例叙事
+- M6+ 反馈驱动：Inbox Phase 1 / 分析深度 / 编排引擎（按此顺序，见 ADR 0012）
 - 其余尾项：Calendar 拖拽改期（M2）、护栏式限额已落地（3/50/1000，env 可调）
 
 - [产品概念设计](docs/design/2026-07-31-spellpaw-concept.md)
@@ -90,6 +91,8 @@ pnpm lint
 ```
 
 > 注意：本机 5432 已被 Postgres.app 占用，Docker 映射到 **5433**。集成测试使用独立数据库 `spellpaw_test`（docker/init 自动创建），不会触碰开发数据。
+
+以上步骤已封装为 `./scripts/dev.sh`（基础设施 + 迁移 + 种子 + dev server 一键启动）；生产模式用 `./scripts/app.sh start|restart|stop|status|logs`。
 
 ## 调研背景
 
