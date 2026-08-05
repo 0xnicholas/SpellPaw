@@ -1,4 +1,6 @@
-# SpellPaw API 文档（M5）
+# SpellPaw API 文档（M7）
+
+> M7 新增：Contact State 完整状态机 + Risk/Opportunity 评分（M7-A）、Persona AI 推导管道（M7-C，门控）。详见下文「Customer Graph 与分析」节的 **Contact State** 与 **Persona** 两小节。
 
 所有 JSON API 走 `/api/*`（Hono 嵌入 Next.js 同一进程）。认证：浏览器会话
 （Auth.js cookie）或 MCP Bearer token（仅 `/api/mcp`）。Workspace 作用域：
@@ -53,12 +55,42 @@
 |------|------|------|
 | `/api/shorten` | POST | `{targetUrl, postId, variantId}` → 短链（6 字符 code，按 variant 幂等） |
 | `/s/:code` | GET | 301 重定向（Redis 24h 缓存）；`sp_c` cookie 归因访客；点击入 `click-touch` 队列 |
-| `/api/contacts` | GET | `?stage=`（大小写不敏感）`&limit=`；只返回非 PII 字段 |
-| `/api/contacts/:id` | GET | Persona + State + 最近触达（永不含 `profile_*`） |
+| `/api/contacts` | GET | `?stage=`（大小写不敏感，6 阶段：AWARE/ENGAGED/ACTIVATED/LOYAL/AT_RISK/CHURNED）`&limit=`；返回 State（stage + risk/opportunity 分 + lastInteractionAt）等非 PII 字段 |
+| `/api/contacts/:id` | GET | Persona + State + `signals`（`daysSinceLastInteraction` / `touches30d` / `conversations30d` 原始信号）；永不含 `profile_*` |
 | `/api/contacts/insights/repeat-viewers` | GET | 30 天内触达 ≥2 篇不同内容的联系人 |
 | `/api/analytics/dashboard` | GET | 总触达 / 唯一联系人 / 重复观看者 / 14 天触达 / 阶段分布 / 热门内容 |
 | `/api/analytics/posts/:id` | GET | 单 Post 触达明细 |
 | `/api/analytics/top-posts` | GET | 按触达排序 |
+
+### Contact State（M7-A，ADR-0015）
+
+每个 Contact 实时携带完整 Lifecycle Stage 与两个评分（规则驱动：事件触发重算 + 每日衰减 cron）。
+
+| 字段 | 说明 |
+|------|------|
+| `stateLifecycleStage` | `AWARE` → `ENGAGED` → `ACTIVATED` → `LOYAL` / `AT_RISK` / `CHURNED` |
+| `stateRiskScore` / `stateOpportunityScore` | 0–100 整数（流失概率 / 升级可能） |
+| `lastInteractionAt` | 最近一次互动时间 |
+
+**评分是"未校准启发式便利层"，不是经验真理**（grilling Q3）：UI 展示为 Low/Med/High
+band；API/MCP 同时返回 `signals` 原始信号，让消费方 agent 可自行推理、覆盖启发式分。
+阈值（`AT_RISK_DAYS`/`CHURNED_DAYS`/`LOYAL_MONTHS`/`STATE_DECAY_CRON` 等）env 可调，见
+`.env.example` 与 `docs/design/m7-persona-state-derivation.md`。
+
+状态机要点：激活（手动/事件）单向棘轮——抗 engagement 降级，但受风险衰减（→ AT_RISK →
+CHURNED）；CHURNED 重新活跃回 AWARE。
+
+### Persona（M7-C，ADR-0015；门控、后台异步）
+
+`personaContentDNA` / `personaSentimentArc` / `personaIntent` 由后台批处理从最近 365 天互动
+推导（dirty-flag 扫描，默认每小时）。**推导会把客户消息正文发给 BYOK LLM**——比用户自有
+内容更敏感，故受独立门禁 `personaDerivationEnabled` 控制（默认**关**，镜像 ADR-0014）：
+
+- 门禁关 → 不推导、不外发内容（dirty 保留待开启）。
+- 门禁开 + 无 key → 写规则降级值；AI 失败 → 保留旧值（下次重试）；读路径**永不阻塞**于 AI。
+- `personaIntentVector`（pgvector）暂未启用（无相似检索消费者）。
+
+Persona 输出仍只经非 PII 投影暴露（`src/server/contact-select.ts`）。
 
 ## Inbox（M6，ADR-0013/0014）
 
@@ -72,15 +104,15 @@ contact 端点仍永不返回 `profile_*`）。
 | `/api/inbox/conversations/:threadId` | GET | 线程全文（消息升序，含 deliveryState） |
 | `/api/inbox/conversations/:threadId/reply` | POST | `{content}` → 202 入队（PENDING→SENT/FAILED，瞬时错误重试 1 次） |
 | `/api/inbox/conversations/:threadId/read` | POST | 写已读游标（InboxReadState） |
-| `/api/contacts/:id/activate` | POST | 手动标记 Activated（写 Event + 粘性阶段，重算不降级） |
+| `/api/contacts/:id/activate` | POST | 手动标记 Activated（写 Event + `activatedAt`；ratchet 抗 engagement 降级，但受风险衰减→可到 AT_RISK/CHURNED） |
 | `/api/contacts/:id/timeline` | GET | 最近 20 条互动（contact_timeline 视图，payload 无 PII） |
 
 ## 设置
 
 | 端点 | 方法 | 说明 |
 |------|------|------|
-| `/api/settings/workspace` | GET | 名称 + MCP 信任开关 ×2 + 计划用量（3/50/1000 护栏） |
-| `/api/settings/workspace` | PATCH | `{name?, mcpPublishApproval?, mcpInboxAccess?}` |
+| `/api/settings/workspace` | GET | 名称 + MCP 信任开关 ×2 + Persona 推导开关 + 计划用量（3/50/1000 护栏） |
+| `/api/settings/workspace` | PATCH | `{name?, mcpPublishApproval?, mcpInboxAccess?, personaDerivationEnabled?}` |
 | `/api/settings/api-tokens` | GET/POST | 列出 / mint（明文仅此一次返回） |
 | `/api/settings/api-tokens/:id` | DELETE | 吊销 |
 
