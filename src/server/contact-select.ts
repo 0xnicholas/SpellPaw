@@ -12,6 +12,7 @@ export const NON_PII_SELECT = {
   stateLifecycleStage: true,
   stateRiskScore: true,
   stateOpportunityScore: true,
+  lastInteractionAt: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.ContactSelect;

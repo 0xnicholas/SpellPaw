@@ -360,11 +360,21 @@ model Contact {
   personaContentDNA   Json?
   personaSentimentArc Json?
   personaIntentVector Float[] // pgvector
+  // M7-A: batch dirty flag for the future Persona derivation pass (ADR-0003
+  // batch path). Set on every Interaction write; cleared by the batch worker.
+  personaDirtyAt DateTime?
 
   // State (real-time, rules-driven) — recomputed on Interaction events.
   stateLifecycleStage   LifecycleStage @default(AWARE)
   stateRiskScore        Int?
   stateOpportunityScore Int?
+  // M7-A: timestamp of the most recent Interaction (drives risk decay + the
+  // daily decay cron scan). Maintained by recomputeContactState.
+  lastInteractionAt DateTime?
+  // M7-A: ever-activated flag for the activation ratchet (ADR-0015). Set on
+  // manual/event activation; cleared when the Contact enters CHURNED so the
+  // "→ Aware" recovery progresses cleanly instead of flickering to ACTIVATED.
+  activatedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -377,4 +387,8 @@ model Contact {
 
   @@index([workspaceId, stateLifecycleStage])
   @@index([workspaceId, updatedAt])
+  // M7-A: daily decay cron scans silent Contacts by their last interaction.
+  @@index([workspaceId, lastInteractionAt])
+  // M7-A: future Persona batch worker scans the dirty flag.
+  @@index([personaDirtyAt])
 }

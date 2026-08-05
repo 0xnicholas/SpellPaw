@@ -85,8 +85,24 @@ export function contactsRoutes(deps: RouteDeps): Hono<AppEnv> {
       select: NON_PII_SELECT,
     });
     if (!contact) throw new ApiError(404, "contact not found");
-    // Interaction timeline arrives with M4/Phase 2; Persona/State are the payload today.
-    return c.json({ contact });
+    // Raw signals alongside the heuristic scores (grilling Q3): an MCP
+    // consumer's agent can override the scores and reason for itself.
+    const windowSince = new Date(Date.now() - 30 * 86_400_000);
+    const [touches30d, conversations30d] = await Promise.all([
+      deps.prisma.contentTouch.count({
+        where: { contactId: contact.id, timestamp: { gte: windowSince } },
+      }),
+      deps.prisma.conversation.count({
+        where: { contactId: contact.id, timestamp: { gte: windowSince } },
+      }),
+    ]);
+    const daysSinceLastInteraction = contact.lastInteractionAt
+      ? Math.floor((Date.now() - contact.lastInteractionAt.getTime()) / 86_400_000)
+      : null;
+    return c.json({
+      contact,
+      signals: { daysSinceLastInteraction, touches30d, conversations30d },
+    });
   });
 
   // M6: recent interaction timeline for the Inbox sidebar — reads the

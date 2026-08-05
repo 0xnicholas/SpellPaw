@@ -5,8 +5,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createPrismaClient } from "@/lib/db";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { createApiApp } from "@/server/http";
-import { createPublisher } from "@/server/queue";
+import { createPublisher, runStateDecay } from "@/server/queue";
 import { applyClick } from "@/server/interactions";
+import { manuallyActivateContact } from "@/server/inbox";
 import { createShortLink, shortLinkUrl, resolveShortLink } from "@/server/shortlinks";
 import { createShortLinkHandler } from "@/app/s/[code]/route";
 import { resetTestSchema, TEST_DATABASE_URL } from "./setup";
@@ -71,7 +72,11 @@ afterAll(async () => {
 
 beforeEach(async () => {
   // Clean slate between tests (contacts, touches, posts, links, variants).
+  // Delete Interaction children (touches/events/conversations) before the
+  // contacts they reference — M7-A tests now create Events (manual activation).
   await prisma.contentTouch.deleteMany({ where: { post: { workspaceId: WS } } });
+  await prisma.event.deleteMany({ where: { workspaceId: WS } });
+  await prisma.conversation.deleteMany({ where: { workspaceId: WS } });
   await prisma.contact.deleteMany({ where: { workspaceId: WS } });
   await prisma.shortLink.deleteMany({ where: { workspaceId: WS } });
   await prisma.postVariant.deleteMany({ where: { post: { workspaceId: WS } } });
@@ -379,5 +384,88 @@ describe("shorten + analytics API", () => {
     expect(d.viewers).toHaveLength(1);
     expect(d.viewers[0]).toMatchObject({ id: "c-r1", postCount: 2, touchCount: 2 });
     expect(JSON.stringify(d)).not.toContain("profile");
+  });
+});
+
+describe("Contact State — M7-A (lifecycle + scores + decay)", () => {
+  it("writes Risk/Opportunity scores in [0,100] + lastInteractionAt after a click", async () => {
+    const p = await seedPost("scoring");
+    await applyClick(prisma, { workspaceId: WS, contactId: "s1", postId: p.id, variantId: p.variants[0]!.id });
+    const c = await prisma.contact.findUniqueOrThrow({ where: { id: "s1" } });
+    expect(c.stateRiskScore).toBeGreaterThanOrEqual(0);
+    expect(c.stateRiskScore).toBeLessThanOrEqual(100);
+    expect(c.stateOpportunityScore).toBeGreaterThanOrEqual(0);
+    expect(c.stateOpportunityScore).toBeLessThanOrEqual(100);
+    expect(c.lastInteractionAt).toBeTruthy();
+    expect(c.personaDirtyAt).toBeTruthy(); // stamped for the future batch
+  });
+
+  it("manual activation → ACTIVATED + scores + activatedAt", async () => {
+    const p = await seedPost("activated");
+    await applyClick(prisma, { workspaceId: WS, contactId: "a1", postId: p.id, variantId: p.variants[0]!.id });
+    await manuallyActivateContact(prisma, WS, "a1");
+    const c = await prisma.contact.findUniqueOrThrow({ where: { id: "a1" } });
+    expect(c.stateLifecycleStage).toBe("ACTIVATED");
+    expect(c.activatedAt).toBeTruthy();
+    expect(c.stateRiskScore).not.toBeNull();
+  });
+
+  it("decays ENGAGED → AT_RISK when silent past the window", async () => {
+    const posts = await Promise.all([seedPost("d1"), seedPost("d2"), seedPost("d3")]);
+    for (const p of posts) {
+      await applyClick(prisma, { workspaceId: WS, contactId: "d1", postId: p.id, variantId: p.variants[0]!.id });
+    }
+    expect((await prisma.contact.findUniqueOrThrow({ where: { id: "d1" } })).stateLifecycleStage).toBe("ENGAGED");
+    // Simulate 40 days of silence (backdate touches + lastInteractionAt).
+    const old = new Date(Date.now() - 40 * 86_400_000);
+    await prisma.contentTouch.updateMany({ where: { contactId: "d1" }, data: { timestamp: old } });
+    await prisma.contact.update({ where: { id: "d1" }, data: { lastInteractionAt: old } });
+    const scanned = await runStateDecay({ prisma }, new Date());
+    expect(scanned).toBeGreaterThanOrEqual(1);
+    expect((await prisma.contact.findUniqueOrThrow({ where: { id: "d1" } })).stateLifecycleStage).toBe("AT_RISK");
+  });
+
+  it("decays AT_RISK → CHURNED after churnedDays and clears activatedAt", async () => {
+    const p = await seedPost("churn");
+    await applyClick(prisma, { workspaceId: WS, contactId: "c1", postId: p.id, variantId: p.variants[0]!.id });
+    await manuallyActivateContact(prisma, WS, "c1");
+    // Force the contact into AT_RISK + 95 days silent.
+    const old = new Date(Date.now() - 95 * 86_400_000);
+    await prisma.contentTouch.updateMany({ where: { contactId: "c1" }, data: { timestamp: old } });
+    await prisma.event.updateMany({ where: { contactId: "c1" }, data: { timestamp: old } });
+    await prisma.contact.update({
+      where: { id: "c1" },
+      data: { lastInteractionAt: old, stateLifecycleStage: "AT_RISK" },
+    });
+    await runStateDecay({ prisma }, new Date());
+    const c = await prisma.contact.findUniqueOrThrow({ where: { id: "c1" } });
+    expect(c.stateLifecycleStage).toBe("CHURNED");
+    expect(c.activatedAt).toBeNull(); // cleared on entering CHURNED
+  });
+
+  it("CHURNED recovers → AWARE on a new interaction", async () => {
+    const p = await seedPost("recover");
+    await prisma.contact.create({
+      data: {
+        id: "r1",
+        workspaceId: WS,
+        stateLifecycleStage: "CHURNED",
+        lastInteractionAt: new Date(Date.now() - 100 * 86_400_000),
+      },
+    });
+    await applyClick(prisma, { workspaceId: WS, contactId: "r1", postId: p.id, variantId: p.variants[0]!.id });
+    expect((await prisma.contact.findUniqueOrThrow({ where: { id: "r1" } })).stateLifecycleStage).toBe("AWARE");
+  });
+
+  it("GET /api/contacts/:id returns raw signals alongside scores (no PII)", async () => {
+    const p = await seedPost("signals");
+    await applyClick(prisma, { workspaceId: WS, contactId: "sig1", postId: p.id, variantId: p.variants[0]!.id });
+    const app = makeApp();
+    const res = await jsonRequest(app, "/api/contacts/sig1");
+    expect(res.status).toBe(200);
+    const signals = res.body.signals as Record<string, number>;
+    expect(signals).toBeDefined();
+    expect(signals.daysSinceLastInteraction).toBe(0);
+    expect(JSON.stringify(res.body)).not.toContain("profile");
   });
 });

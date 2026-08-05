@@ -2,29 +2,35 @@
 // rules-driven Contact state/persona recompute (schema comments: "State
 // (real-time, rules-driven) — recomputed on Interaction events").
 //
-// Rules (Phase 1, intentionally simple — an AI upgrade path is documented in
-// the spec; thresholds are SpellPaw decisions):
-// - Lifecycle: AWARE → ENGAGED once a contact accumulates ≥3 Content Touch
-//   within 30 days, OR records ≥1 Conversation within 30 days (M6 decision —
-//   ADR-0013/glossary: replaces the M4 rule of ≥2 distinct posts).
-//   ACTIVATED and beyond are sticky: manual activation (M6) sets ACTIVATED
-//   and recompute never downgrades it. No signals yet for LOYAL/AT_RISK/CHURNED.
+// M7-A (ADR-0015): the full Lifecycle Stage machine + Risk/Opportunity scoring
+// live in the pure domain module src/domain/contact-state.ts (computeState).
+// This service is the DB-writing wrapper: it gathers observable signals from
+// the contact_timeline VIEW + counts, calls computeState, and persists stage +
+// scores + lastInteractionAt + personaDirtyAt in the same transaction as the
+// Interaction write. Time-driven decay (AT_RISK/CHURNED) is advanced by the
+// daily state-decay cron (src/server/queue.ts runStateDecay).
+//
 // - Contact type: AUDIENCE → CORRESPONDENT on the first Conversation (ever).
-// - Persona: rule-based stats over a 365-day window (action counts, distinct
-//   posts). The "AI-derived" pipeline (spec §1) can later upgrade
-//   personaContentDNA without changing the write path.
+// - Persona: rule-based stats over a 365-day window (placeholder). The
+//   "AI-derived" pipeline (M7-C) later upgrades personaContentDNA without
+//   changing this write path.
 //
 // Spec §5 asks the click worker to "batch INSERT ContentTouch" — this worker
 // processes one click per job (documented deviation): contact resolution and
 // state recompute are inherently per-click, and at Phase 1 volume a batch
 // layer adds complexity without measurable gain.
 import type { PrismaClient } from "@/generated/prisma/client";
+import {
+  computeState,
+  enteredChurned,
+  stateConfig,
+  type LifecycleStage,
+} from "@/domain/contact-state";
 
 /** Transaction client as passed to $transaction callbacks. */
 export type TxClient = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
 
-export const ENGAGE_THRESHOLD_TOUCHES = 3;
-export const ENGAGE_WINDOW_DAYS = 30;
+/** Persona derivation window (rule-based placeholder until M7-C AI derivation). */
 export const PERSONA_WINDOW_DAYS = 365;
 
 export type TouchAction = "CLICK" | "LIKE" | "SHARE";
@@ -90,53 +96,80 @@ export async function applyClick(
 }
 
 /**
- * Recompute the contact's type (CORRESPONDENT on first Conversation), lifecycle
- * stage (M6 rule: ≥3 touches OR ≥1 conversation in 30d; ACTIVATED+ sticky) and
- * persona stats — run inside the caller's transaction so the interaction and
- * its derived state stay consistent.
+ * Recompute the Contact's type (CORRESPONDENT on first Conversation), full
+ * Lifecycle Stage (M7-A — now LOYAL/AT_RISK/CHURNED via computeState), the
+ * Risk/Opportunity scores, and the rule-based Persona placeholder — run
+ * inside the caller's transaction so the Interaction and its derived state
+ * stay consistent. Also stamps lastInteractionAt + personaDirtyAt.
  */
 export async function recomputeContactState(
   tx: TxClient,
   contactId: string,
 ): Promise<void> {
+  const cfg = stateConfig();
+  const now = new Date();
+  const windowSince = new Date(now.getTime() - cfg.engageWindowDays * 86_400_000);
+  const yearSince = new Date(now.getTime() - PERSONA_WINDOW_DAYS * 86_400_000);
+
   const current = await tx.contact.findUniqueOrThrow({
     where: { id: contactId },
-    select: { stateLifecycleStage: true },
+    select: { stateLifecycleStage: true, activatedAt: true },
   });
+  const currentStage = current.stateLifecycleStage as LifecycleStage;
 
-  const engageSince = new Date(Date.now() - ENGAGE_WINDOW_DAYS * 86_400_000);
-  const [touches, conversations] = await Promise.all([
-    tx.contentTouch.count({
-      where: { contactId, timestamp: { gte: engageSince } },
-    }),
-    tx.conversation.count({
-      where: { contactId, timestamp: { gte: engageSince } },
-    }),
-  ]);
+  // lastInteractionAt + 365d volume come from the merged timeline VIEW (one
+  // query each) so we don't UNION three tables by hand.
+  const [lastRows, volumeRows, touchesWindow, conversationsWindow, totalConversations] =
+    await Promise.all([
+      tx.$queryRaw<Array<{ last: Date | null }>>`SELECT MAX(timestamp) AS last FROM contact_timeline WHERE "contactId" = ${contactId}`,
+      tx.$queryRaw<Array<{ n: number }>>`SELECT COUNT(*)::int AS n FROM contact_timeline WHERE "contactId" = ${contactId} AND timestamp >= ${yearSince}`,
+      tx.contentTouch.count({ where: { contactId, timestamp: { gte: windowSince } } }),
+      tx.conversation.count({ where: { contactId, timestamp: { gte: windowSince } } }),
+      tx.conversation.count({ where: { contactId } }),
+    ]);
 
-  // M6 rule: ≥3 touches OR ≥1 conversation within 30 days. ACTIVATED+ is
-  // sticky — manual activation must never be downgraded by a recompute.
-  const engaged = touches >= ENGAGE_THRESHOLD_TOUCHES || conversations >= 1;
-  const manualStage = current.stateLifecycleStage === "ACTIVATED";
-  const stage = manualStage
-    ? "ACTIVATED"
-    : engaged
-      ? "ENGAGED"
-      : "AWARE";
+  const lastInteractionAt = lastRows[0]?.last ?? now;
+  const volume365d = volumeRows[0]?.n ?? 0;
+  const daysSinceLastInteraction = lastInteractionAt
+    ? Math.floor((now.getTime() - lastInteractionAt.getTime()) / 86_400_000)
+    : 0;
+
+  // LOYAL eligibility only matters for activated Contacts — skip the month
+  // query for everyone else (keeps the hot path lean).
+  let recentActiveMonths = 0;
+  if (current.activatedAt) {
+    // First day of the month (loyalMonths - 1) before the current month, so the
+    // window spans exactly loyalMonths calendar months.
+    const loyalSince = new Date(now.getFullYear(), now.getMonth() - (cfg.loyalMonths - 1), 1);
+    const monthRows = await tx.$queryRaw<Array<{ m: number }>>`SELECT COUNT(DISTINCT date_trunc('month', timestamp))::int AS m FROM contact_timeline WHERE "contactId" = ${contactId} AND timestamp >= ${loyalSince}`;
+    recentActiveMonths = monthRows[0]?.m ?? 0;
+  }
+
+  const result = computeState(
+    {
+      manualActivated: current.activatedAt !== null,
+      currentStage,
+      touchesWindow,
+      conversationsWindow,
+      recentActiveMonths,
+      daysSinceLastInteraction,
+      volume365d,
+    },
+    cfg,
+  );
 
   // AUDIENCE → CORRESPONDENT on the first Conversation (ever).
-  const totalConversations = await tx.conversation.count({ where: { contactId } });
   const type = totalConversations >= 1 ? "CORRESPONDENT" : "AUDIENCE";
 
-  const personaSince = new Date(Date.now() - PERSONA_WINDOW_DAYS * 86_400_000);
+  // Rule-based Persona placeholder (upgraded to real AI derivation in M7-C).
   const distinctPosts = await tx.contentTouch.findMany({
-    where: { contactId, timestamp: { gte: personaSince } },
+    where: { contactId, timestamp: { gte: yearSince } },
     select: { postId: true },
     distinct: ["postId"],
   });
   const byAction = await tx.contentTouch.groupBy({
     by: ["action"],
-    where: { contactId, timestamp: { gte: personaSince } },
+    where: { contactId, timestamp: { gte: yearSince } },
     _count: { action: true },
   });
   const actionCounts = Object.fromEntries(
@@ -147,13 +180,20 @@ export async function recomputeContactState(
     where: { id: contactId },
     data: {
       type,
-      stateLifecycleStage: stage,
+      stateLifecycleStage: result.stage,
+      stateRiskScore: result.riskScore,
+      stateOpportunityScore: result.opportunityScore,
+      lastInteractionAt: lastInteractionAt ?? now,
+      personaDirtyAt: now,
       personaContentDNA: {
         actionCounts,
         distinctPosts: distinctPosts.length,
         windowDays: PERSONA_WINDOW_DAYS,
-        derivedAt: new Date().toISOString(),
+        derivedAt: now.toISOString(),
       },
+      // Entering CHURNED clears the activation flag — full journey-reset so
+      // the "→ Aware" recovery progresses cleanly, not flickering to ACTIVATED.
+      ...(enteredChurned(currentStage, result.stage) ? { activatedAt: null } : {}),
     },
   });
 }

@@ -36,7 +36,8 @@ import {
 import type { Post, PostVariant } from "@/generated/prisma/client";
 import type { ChannelAdapter, TokenSet } from "@/adapters/channels/types";
 import { decryptString, encryptString } from "@/lib/crypto";
-import { applyClick, type ClickEvent } from "./interactions";
+import { applyClick, recomputeContactState, type ClickEvent } from "./interactions";
+import { stateConfig } from "@/domain/contact-state";
 import { recordInboundMessage } from "./inbox";
 import { generateMockComment } from "@/adapters/channels/mock";
 
@@ -355,6 +356,38 @@ export async function runScheduleReconciler(
   return overdue.length;
 }
 
+// --- M7-A: daily Contact State decay (ADR-0015) ---------------------------
+// Time-driven stages (AT_RISK / CHURNED) advance on calendar time, not on
+// events — a silent Contact fires no Interaction to trigger a recompute. This
+// repeatable job scans Contacts silent past the at-risk window and recomputes
+// their State. Mirrors the schedule reconciler pattern above.
+const STATE_DECAY_QUEUE = "state-decay";
+const STATE_DECAY_JOB = "run-state-decay";
+const STATE_DECAY_PATTERN = process.env.STATE_DECAY_CRON ?? "0 3 * * *";
+const STATE_DECAY_BATCH_DEFAULT = 500;
+
+/** Recompute State for Contacts silent past the at-risk window. Exported for
+ *  direct testing (same shape as runScheduleReconciler). Only needs prisma. */
+export async function runStateDecay(
+  deps: Pick<QueueDeps, "prisma">,
+  now: Date = new Date(),
+): Promise<number> {
+  const cfg = stateConfig();
+  const cutoff = new Date(now.getTime() - cfg.atRiskDays * 86_400_000);
+  const batchRaw = Number(process.env.STATE_DECAY_BATCH);
+  const batch = Number.isInteger(batchRaw) && batchRaw > 0 ? batchRaw : STATE_DECAY_BATCH_DEFAULT;
+  const silent = await deps.prisma.contact.findMany({
+    where: { lastInteractionAt: { lt: cutoff } },
+    orderBy: { lastInteractionAt: "asc" },
+    take: batch,
+    select: { id: true },
+  });
+  for (const contact of silent) {
+    await deps.prisma.$transaction((tx) => recomputeContactState(tx, contact.id));
+  }
+  return silent.length;
+}
+
 export interface RunningWorkers {
   close: () => Promise<void>;
 }
@@ -576,6 +609,12 @@ export function createWorkers(deps: WorkerDeps): RunningWorkers {
     reconcilerJobProcessor(deps, publisher),
   { connection, concurrency: 1 });
 
+  // M7-A: daily State decay worker.
+  const stateDecayWorker = new Worker(STATE_DECAY_QUEUE, () => runStateDecay(deps), {
+    connection,
+    concurrency: 1,
+  });
+
   // Register the 5-min cron via a BullMQ v6 job scheduler (idempotent across
   // processes — same scheduler id dedupes).
   void (async () => {
@@ -593,6 +632,22 @@ export function createWorkers(deps: WorkerDeps): RunningWorkers {
     }
   })();
 
+  // Register the daily State-decay cron (BullMQ v6 job scheduler, pattern).
+  void (async () => {
+    const queue = new Queue(STATE_DECAY_QUEUE, { connection: redis(deps.redisUrl) });
+    try {
+      await queue.upsertJobScheduler(
+        STATE_DECAY_JOB,
+        { pattern: STATE_DECAY_PATTERN },
+        { name: STATE_DECAY_JOB, data: {} },
+      );
+    } catch (err) {
+      console.error("[queue] failed to register state-decay cron", err);
+    } finally {
+      await queue.close();
+    }
+  })();
+
   return {
     async close() {
       await Promise.all([
@@ -602,6 +657,7 @@ export function createWorkers(deps: WorkerDeps): RunningWorkers {
         clickWorker.close(),
         mockInboundWorker.close(),
         reconcilerWorker.close(),
+        stateDecayWorker.close(),
       ]);
       await publisher.close();
       await connection.quit();

@@ -93,7 +93,7 @@ export async function manuallyActivateContact(
   await prisma.$transaction(async (tx: TxClient) => {
     const contact = await tx.contact.findFirst({
       where: { id: contactId, workspaceId },
-      select: { id: true, stateLifecycleStage: true },
+      select: { id: true },
     });
     if (!contact) throw new Error("contact not found in workspace");
     await tx.event.create({
@@ -103,10 +103,10 @@ export async function manuallyActivateContact(
         eventType: "MANUAL_ACTIVATION",
       },
     });
-    await tx.contact.update({
-      where: { id: contactId },
-      data: { stateLifecycleStage: "ACTIVATED" },
-    });
+    // Set the ever-activated flag (ratchet), then recompute — which derives
+    // ACTIVATED + scores from the activatedAt signal (ADR-0015).
+    await tx.contact.update({ where: { id: contactId }, data: { activatedAt: new Date() } });
+    await recomputeContactState(tx, contactId);
   });
 }
 
