@@ -1,8 +1,10 @@
 // Unit tests for the BYOK provider clients — fetch is stubbed, no network.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  complete,
   generateContent,
   keyPreview,
+  parseJsonLenient,
 } from "./providers";
 
 function stubFetch(impl: (url: string, init: RequestInit) => Promise<Response>) {
@@ -96,5 +98,72 @@ describe("keyPreview", () => {
 
   it("masks short keys entirely", () => {
     expect(keyPreview("short")).toBe("•••••");
+  });
+});
+
+describe("complete", () => {
+  it("sends a system + user turn and returns the text", async () => {
+    stubFetch(async (url, init) => {
+      expect(url).toBe("https://api.openai.com/v1/chat/completions");
+      const body = JSON.parse(String(init.body));
+      expect(body.messages).toEqual([
+        { role: "system", content: "be brief" },
+        { role: "user", content: "hi" },
+      ]);
+      return new Response(JSON.stringify({ choices: [{ message: { content: "hello back" } }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    const text = await complete({ provider: "openai", apiKey: "sk-x", system: "be brief", user: "hi" });
+    expect(text).toBe("hello back");
+  });
+
+  it("omits the system message when empty (preserves single-turn shape)", async () => {
+    stubFetch(async (_url, init) => {
+      const body = JSON.parse(String(init.body));
+      expect(body.messages).toEqual([{ role: "user", content: "only user" }]);
+      return new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), { status: 200 });
+    });
+    await complete({ provider: "openai", apiKey: "sk-x", system: "", user: "only user" });
+  });
+
+  it("requests JSON mode on OpenAI (response_format in the body)", async () => {
+    stubFetch(async (_url, init) => {
+      const body = JSON.parse(String(init.body));
+      expect(body.response_format).toEqual({ type: "json_object" });
+      return new Response(JSON.stringify({ choices: [{ message: { content: '{"a":1}' } }] }), { status: 200 });
+    });
+    const text = await complete({ provider: "openai", apiKey: "sk-x", system: "extract", user: "x", json: true });
+    expect(text).toBe("{\"a\":1}");
+  });
+
+  it("coerces Anthropic JSON mode via the system prompt (no native mode)", async () => {
+    stubFetch(async (_url, init) => {
+      const body = JSON.parse(String(init.body));
+      expect(body.response_format).toBeUndefined();
+      expect(body.system).toMatch(/valid minified JSON/);
+      return new Response(JSON.stringify({ content: [{ type: "text", text: '{"b":2}' }] }), { status: 200 });
+    });
+    const text = await complete({ provider: "anthropic", apiKey: "sk-x", system: "extract", user: "x", json: true });
+    expect(text).toBe("{\"b\":2}");
+  });
+});
+
+describe("parseJsonLenient", () => {
+  it("parses plain JSON", () => {
+    expect(parseJsonLenient('{"a":1}')).toEqual({ a: 1 });
+  });
+
+  it("strips ```json fences", () => {
+    expect(parseJsonLenient("```json\n{\"a\":1}\n```")).toEqual({ a: 1 });
+  });
+
+  it("isolates JSON from surrounding prose", () => {
+    expect(parseJsonLenient('Here you go: {"a":1} thanks')).toEqual({ a: 1 });
+  });
+
+  it("throws AI_PROVIDER_ERROR when unparseable", () => {
+    expect(() => parseJsonLenient("totally not json at all")).toThrow();
   });
 });
