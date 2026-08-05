@@ -37,6 +37,11 @@ model Workspace {
   // inbox.* tools reject). Deliberately separate from mcpPublishApproval —
   // different default posture, different tool family.
   mcpInboxAccess    Boolean            @default(false)
+  // M7-C (ADR-0015): content-egress gate for Persona derivation. Persona
+  // derivation reads Contact message text and sends it to the BYOK LLM; this
+  // is a categorically more sensitive egress than the user's own Post text, so
+  // it defaults OFF and must be explicitly enabled (mirrors ADR-0014).
+  personaDerivationEnabled Boolean   @default(false)
   createdAt          DateTime           @default(now())
   posts              Post[]
   oauthConnections   OAuthConnection[]
@@ -359,6 +364,7 @@ model Contact {
   // Persona (AI-derived, no PII, 365-day window) — populated by M4 derivation.
   personaContentDNA   Json?
   personaSentimentArc Json?
+  personaIntent       Json? // M7-C: readable intent (category/confidence/evidence)
   personaIntentVector Float[] // pgvector
   // M7-A: batch dirty flag for the future Persona derivation pass (ADR-0003
   // batch path). Set on every Interaction write; cleared by the batch worker.

@@ -38,6 +38,12 @@ import type { ChannelAdapter, TokenSet } from "@/adapters/channels/types";
 import { decryptString, encryptString } from "@/lib/crypto";
 import { applyClick, recomputeContactState, type ClickEvent } from "./interactions";
 import { stateConfig } from "@/domain/contact-state";
+import {
+  PERSONA_DERIVE_JOB,
+  PERSONA_DERIVE_QUEUE,
+  personaBatchPattern,
+  runPersonaBatch,
+} from "./persona";
 import { recordInboundMessage } from "./inbox";
 import { generateMockComment } from "@/adapters/channels/mock";
 
@@ -615,6 +621,13 @@ export function createWorkers(deps: WorkerDeps): RunningWorkers {
     concurrency: 1,
   });
 
+  // M7-C: hourly Persona derivation batch worker (ADR-0003 batch path).
+  const personaDeriveWorker = new Worker(
+    PERSONA_DERIVE_QUEUE,
+    () => runPersonaBatch({ prisma: deps.prisma, encryptionKey: deps.encryptionKey }),
+    { connection, concurrency: 1 },
+  );
+
   // Register the 5-min cron via a BullMQ v6 job scheduler (idempotent across
   // processes — same scheduler id dedupes).
   void (async () => {
@@ -648,6 +661,22 @@ export function createWorkers(deps: WorkerDeps): RunningWorkers {
     }
   })();
 
+  // Register the hourly Persona-derivation cron (BullMQ v6 job scheduler).
+  void (async () => {
+    const queue = new Queue(PERSONA_DERIVE_QUEUE, { connection: redis(deps.redisUrl) });
+    try {
+      await queue.upsertJobScheduler(
+        PERSONA_DERIVE_JOB,
+        { pattern: personaBatchPattern() },
+        { name: PERSONA_DERIVE_JOB, data: {} },
+      );
+    } catch (err) {
+      console.error("[queue] failed to register persona-derive cron", err);
+    } finally {
+      await queue.close();
+    }
+  })();
+
   return {
     async close() {
       await Promise.all([
@@ -658,6 +687,7 @@ export function createWorkers(deps: WorkerDeps): RunningWorkers {
         mockInboundWorker.close(),
         reconcilerWorker.close(),
         stateDecayWorker.close(),
+        personaDeriveWorker.close(),
       ]);
       await publisher.close();
       await connection.quit();

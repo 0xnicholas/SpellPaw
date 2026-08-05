@@ -8,6 +8,7 @@ export const NON_PII_SELECT = {
   type: true,
   personaContentDNA: true,
   personaSentimentArc: true,
+  personaIntent: true,
   personaIntentVector: true,
   stateLifecycleStage: true,
   stateRiskScore: true,
